@@ -3,7 +3,7 @@
 @tailwind utilities;
 
 @layer base {
-  * {
+  *, *::before, *::after {
     box-sizing: border-box;
     -webkit-tap-highlight-color: transparent;
     -webkit-font-smoothing: antialiased;
@@ -17,53 +17,55 @@
     padding: 0;
     overflow: hidden;
     font-family: 'Inter', system-ui, sans-serif;
-    background: #070a14;
+    background: #030408;
     color: rgba(255, 255, 255, 0.85);
   }
 
-  /* Hide scrollbars globally */
-  ::-webkit-scrollbar {
-    display: none;
-  }
+  ::-webkit-scrollbar { display: none; }
 
-  /* Date/time inputs — dark theme */
   input[type="date"],
-  input[type="time"] {
-    color-scheme: dark;
-  }
+  input[type="time"] { color-scheme: dark; }
 
-  /* Placeholder color */
-  ::placeholder {
-    color: rgba(255, 255, 255, 0.2);
-  }
+  ::placeholder { color: rgba(255,255,255,0.18); }
 
-  /* Select dark */
-  select option {
-    background: #0a0e1a;
-    color: rgba(255, 255, 255, 0.85);
-  }
+  select option { background: #08060f; color: rgba(255,255,255,0.85); }
 }
 
 @layer utilities {
-  .glass {
-    background: rgba(255, 255, 255, 0.06);
-    backdrop-filter: blur(20px) saturate(180%);
-    -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+  /* Liquid glass card */
+  .lg {
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(24px) saturate(180%);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    border: 1px solid rgba(255,255,255,0.11);
+    box-shadow:
+      0 8px 32px rgba(0,0,0,0.35),
+      inset 0 1px 0 rgba(255,255,255,0.16),
+      inset 0 -1px 0 rgba(255,255,255,0.04);
   }
 
-  .glass-dark {
-    background: rgba(0, 0, 0, 0.35);
-    backdrop-filter: blur(30px) saturate(180%);
-    -webkit-backdrop-filter: blur(30px) saturate(180%);
-    border: 1px solid rgba(255, 255, 255, 0.07);
+  /* Pill variant */
+  .lg-pill {
+    background: rgba(255,255,255,0.07);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.13);
+    border-radius: 999px;
+    box-shadow:
+      0 2px 14px rgba(0,0,0,0.3),
+      inset 0 1px 0 rgba(255,255,255,0.18);
   }
 
-  .no-scrollbar {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
+  /* Iridescent accent pill */
+  .lg-pill-accent {
+    background: linear-gradient(135deg, rgba(167,139,250,0.2), rgba(78,205,196,0.14));
+    border: 1px solid rgba(167,139,250,0.32);
+    border-radius: 999px;
+    box-shadow:
+      0 2px 14px rgba(140,100,255,0.18),
+      inset 0 1px 0 rgba(255,255,255,0.2);
   }
-  .no-scrollbar::-webkit-scrollbar {
-    display: none;
-  }
+
+  .no-scrollbar { scrollbar-width: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
 }

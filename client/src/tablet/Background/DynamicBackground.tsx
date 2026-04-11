@@ -1,78 +1,49 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTimeOfDay } from '../../hooks/useTimeOfDay';
-import { BG_CONFIG } from './backgroundConfig';
+
+const BG: Record<string, { base: string; a: string; b: string }> = {
+  dawn:  { base: '#0d0608', a: 'rgba(180,60,40,0.18)',   b: 'rgba(120,40,80,0.12)' },
+  day:   { base: '#050810', a: 'rgba(40,80,180,0.16)',   b: 'rgba(30,120,160,0.10)' },
+  dusk:  { base: '#080510', a: 'rgba(140,40,160,0.18)',  b: 'rgba(200,60,80,0.12)' },
+  night: { base: '#030408', a: 'rgba(60,40,140,0.14)',   b: 'rgba(20,60,120,0.08)' },
+};
 
 export function DynamicBackground() {
-  const timeOfDay = useTimeOfDay();
-  const config = BG_CONFIG[timeOfDay];
+  const tod = useTimeOfDay();
+  const bg = BG[tod];
 
   return (
     <AnimatePresence mode="wait">
       <motion.div
-        key={timeOfDay}
+        key={tod}
         className="fixed inset-0 -z-10 overflow-hidden"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        transition={{ duration: 4, ease: 'easeInOut' }}
-        style={{ background: config.base }}
+        transition={{ duration: 5 }}
+        style={{ background: bg.base }}
       >
-        {/* Animated orb 1 */}
         <motion.div
-          className="absolute w-[60vw] h-[60vw] rounded-full"
+          className="absolute rounded-full"
           style={{
-            background: config.orb1,
-            top: '-10%',
-            left: '-5%',
+            width: '70vw', height: '70vw',
+            top: '-20%', left: '-10%',
+            background: `radial-gradient(circle, ${bg.a} 0%, transparent 70%)`,
+            filter: 'blur(60px)',
           }}
-          animate={{
-            x: [0, 40, -20, 0],
-            y: [0, -30, 25, 0],
-            scale: [1, 1.08, 0.94, 1],
-          }}
-          transition={{ duration: 22, repeat: Infinity, ease: 'easeInOut' }}
+          animate={{ x: [0, 30, 0], y: [0, -20, 0] }}
+          transition={{ duration: 24, repeat: Infinity, ease: 'easeInOut' }}
         />
-
-        {/* Animated orb 2 */}
         <motion.div
-          className="absolute w-[50vw] h-[50vw] rounded-full"
+          className="absolute rounded-full"
           style={{
-            background: config.orb2,
-            bottom: '10%',
-            right: '-10%',
+            width: '60vw', height: '60vw',
+            bottom: '5%', right: '-10%',
+            background: `radial-gradient(circle, ${bg.b} 0%, transparent 70%)`,
+            filter: 'blur(80px)',
           }}
-          animate={{
-            x: [0, -35, 15, 0],
-            y: [0, 25, -20, 0],
-            scale: [1, 0.92, 1.06, 1],
-          }}
+          animate={{ x: [0, -25, 0], y: [0, 20, 0] }}
           transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
-        />
-
-        {/* Animated orb 3 */}
-        <motion.div
-          className="absolute w-[40vw] h-[40vw] rounded-full"
-          style={{
-            background: config.orb3,
-            top: '40%',
-            left: '40%',
-            transform: 'translate(-50%, -50%)',
-          }}
-          animate={{
-            x: [0, 20, -15, 0],
-            y: [0, -15, 20, 0],
-            scale: [1, 1.05, 0.97, 1],
-          }}
-          transition={{ duration: 28, repeat: Infinity, ease: 'easeInOut' }}
-        />
-
-        {/* Subtle noise overlay */}
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E")`,
-            opacity: 0.4,
-          }}
         />
       </motion.div>
     </AnimatePresence>

@@ -1,71 +1,92 @@
+import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
 import { DynamicBackground } from './Background/DynamicBackground';
-import { ClockDisplay } from './Clock/ClockDisplay';
+import { WalleAvatar } from './Avatar/WalleAvatar';
 import { CalendarStrip } from './Calendar/CalendarStrip';
 import { TaskPanel } from './TaskPanel/TaskPanel';
 import { todayString } from './Calendar/calendarUtils';
+import { useClock } from '../hooks/useClock';
+
+function TopClock() {
+  const { time, date, dayName } = useClock();
+  return (
+    <div className="fixed top-6 right-8 z-20 text-right select-none pointer-events-none">
+      <div style={{
+        fontSize: '1.6rem',
+        fontWeight: 200,
+        color: 'rgba(255,255,255,0.88)',
+        letterSpacing: '0.04em',
+        lineHeight: 1,
+        textShadow: '0 0 20px rgba(160,130,255,0.4)',
+      }}>
+        {time}
+      </div>
+      <div style={{
+        fontSize: '0.7rem',
+        fontWeight: 300,
+        color: 'rgba(255,255,255,0.40)',
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+        marginTop: '0.3rem',
+      }}>
+        {dayName} · {date}
+      </div>
+    </div>
+  );
+}
 
 export function TabletApp() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
-  const handleSelectDate = (date: string) => {
-    setSelectedDate(date || null);
-  };
-
+  const handleSelectDate = (date: string) => setSelectedDate(date || null);
   const handleClose = () => setSelectedDate(null);
 
   return (
     <div className="fixed inset-0 overflow-hidden">
       <DynamicBackground />
+      <TopClock />
 
-      {/* Main content: clock centered */}
-      <div className="flex items-center justify-center h-full pb-32">
-        <ClockDisplay />
-      </div>
-
-      {/* Today shortcut */}
-      <AnimatePresence>
-        {!selectedDate && (
-          <motion.button
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            transition={{ delay: 0.5 }}
+      {/* Centered avatar */}
+      <div className="flex items-center justify-center h-full pb-28">
+        <div className="flex flex-col items-center gap-6">
+          <WalleAvatar
+            size={200}
             onClick={() => setSelectedDate(todayString())}
-            className="fixed top-8 right-8 px-4 py-2 rounded-full text-xs font-light tracking-widest uppercase"
+          />
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 1 }}
             style={{
-              background: 'rgba(255,255,255,0.06)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: 'rgba(255,255,255,0.5)',
-              backdropFilter: 'blur(10px)',
+              fontSize: '0.72rem',
+              fontWeight: 300,
+              color: 'rgba(255,255,255,0.28)',
+              letterSpacing: '0.22em',
+              textTransform: 'uppercase',
             }}
           >
-            Aujourd'hui
-          </motion.button>
-        )}
-      </AnimatePresence>
+            Touchez pour commencer
+          </motion.p>
+        </div>
+      </div>
 
-      {/* Calendar strip (bottom) */}
-      <CalendarStrip
-        selectedDate={selectedDate}
-        onSelectDate={handleSelectDate}
-      />
+      {/* Calendar strip */}
+      <CalendarStrip selectedDate={selectedDate} onSelectDate={handleSelectDate} />
 
-      {/* Task panel (slides up) */}
+      {/* Task panel */}
       <AnimatePresence>
         {selectedDate && (
           <>
-            {/* Backdrop */}
             <motion.div
+              key="backdrop"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               className="fixed inset-0 z-10"
-              style={{ background: 'rgba(0,0,0,0.3)', backdropFilter: 'blur(2px)' }}
+              style={{ backdropFilter: 'blur(3px)', background: 'rgba(0,0,0,0.25)' }}
               onClick={handleClose}
             />
-            <TaskPanel date={selectedDate} onClose={handleClose} />
+            <TaskPanel key="panel" date={selectedDate} onClose={handleClose} />
           </>
         )}
       </AnimatePresence>
