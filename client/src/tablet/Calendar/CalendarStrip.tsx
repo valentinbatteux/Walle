@@ -11,7 +11,7 @@ interface Props {
 
 export function CalendarStrip({ selectedDate, onSelectDate }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const todayRef = useRef<HTMLButtonElement>(null);
+  const todayRef = useRef<HTMLElement | null>(null);
 
   const today = new Date();
   const from = toDateString(new Date(today.getFullYear(), today.getMonth(), today.getDate() - 30));
@@ -68,7 +68,7 @@ export function CalendarStrip({ selectedDate, onSelectDate }: Props) {
         {days.map((day) => (
           <div
             key={day.dateString}
-            ref={day.isToday ? (el) => { (todayRef as React.MutableRefObject<HTMLButtonElement | null>).current = el as HTMLButtonElement; } : undefined}
+            ref={day.isToday ? (el) => { todayRef.current = el; } : undefined}
           >
             <DayTile
               day={day}

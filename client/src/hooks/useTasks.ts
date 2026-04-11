@@ -37,14 +37,15 @@ export function useTasks(date: string) {
 
   const addTask = useCallback(async (input: CreateTaskInput): Promise<Task> => {
     const tempId = -Date.now();
+    const { ai_suggested, ...rest } = input;
     const optimistic: Task = {
       id: tempId,
       completed: 0,
-      ai_suggested: 0,
+      ai_suggested: ai_suggested ? 1 : 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
       priority: 'medium',
-      ...input,
+      ...rest,
     };
     setTasks(prev => [...prev, optimistic]);
     try {

@@ -41,7 +41,7 @@ export function ShoppingTab() {
 
       {/* Add item */}
       <AddShoppingItem
-        onAdd={(name, quantity, category) => addItem({ name, quantity, category })}
+        onAdd={async (name, quantity, category) => { await addItem({ name, quantity, category }); }}
       />
 
       {/* Loading */}
