@@ -13,6 +13,7 @@ export default defineConfig({
       },
     },
   },
+  base: '/Walle/',
   build: {
     outDir: 'dist',
   },
