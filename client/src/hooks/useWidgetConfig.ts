@@ -1,14 +1,14 @@
 import { useState, useCallback } from 'react';
 import { WidgetConfig, WidgetId, WidgetMap } from '../types/widgets';
 
-const STORAGE_KEY = 'walle_widgets_v1';
+const STORAGE_KEY = 'walle_widgets_v2';
 
 const DEFAULTS: WidgetMap = {
-  weather: { id: 'weather', enabled: true, order: 0, config: { city: 'Paris', unit: 'celsius' } },
-  football: { id: 'football', enabled: true, order: 1, config: { teams: ['PSG', 'OM', 'OL'] } },
-  brocante: { id: 'brocante', enabled: true, order: 2, config: { city: 'Paris', radiusKm: 30 } },
+  weather:  { id: 'weather',  enabled: true, order: 0, config: { city: 'Paris', unit: 'celsius' } },
+  tasks:    { id: 'tasks',    enabled: true, order: 1, config: { showCompleted: false } },
+  football: { id: 'football', enabled: true, order: 2, config: { teams: ['PSG', 'OM', 'OL'] } },
   shopping: { id: 'shopping', enabled: true, order: 3, config: { maxItems: 5 } },
-  tasks: { id: 'tasks', enabled: true, order: 4, config: { showCompleted: false } },
+  brocante: { id: 'brocante', enabled: true, order: 4, config: { city: 'Paris', radiusKm: 30 } },
 };
 
 function load(): WidgetMap {
@@ -16,7 +16,6 @@ function load(): WidgetMap {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULTS;
     const parsed = JSON.parse(raw) as Partial<WidgetMap>;
-    // Merge with defaults so new widgets appear automatically
     const merged: WidgetMap = { ...DEFAULTS };
     for (const id of Object.keys(parsed) as WidgetId[]) {
       if (merged[id]) {
