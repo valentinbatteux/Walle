@@ -18,7 +18,7 @@ export function WidgetGrid({ widgets }: Props) {
       display: 'grid',
       gridTemplateColumns: 'repeat(2, 1fr)',
       gap: '0.9rem',
-      padding: '0 1.25rem 2rem',
+      padding: '0 1.25rem 9rem',
     }}>
       <AnimatePresence>
         {enabled.map(w => {
