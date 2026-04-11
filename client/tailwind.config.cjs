@@ -1,24 +1,15 @@
-import type { Config } from 'tailwindcss';
-
-export default {
+/** @type {import('tailwindcss').Config} */
+module.exports = {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
-      fontWeight: {
-        thin: '100',
-        extralight: '200',
-      },
-      backdropBlur: {
-        xs: '2px',
-      },
       animation: {
         'float-slow': 'float 20s ease-in-out infinite',
         'float-medium': 'float 15s ease-in-out infinite reverse',
         'float-fast': 'float 10s ease-in-out infinite',
-        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
       },
       keyframes: {
         float: {
@@ -30,4 +21,4 @@ export default {
     },
   },
   plugins: [],
-} satisfies Config;
+};
