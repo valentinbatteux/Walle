@@ -2,16 +2,26 @@ import { useState, useEffect, useCallback } from 'react';
 import { ShoppingItem } from '../types';
 import { api } from '../lib/api';
 import { useSocket } from './useSocket';
+import { DEMO_SHOPPING } from '../lib/demoData';
+
+function isDemo(): boolean {
+  return (window as unknown as { __walleDemo?: boolean }).__walleDemo === true;
+}
 
 export function useShopping() {
   const [items, setItems] = useState<ShoppingItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getShopping().then((data) => {
-      setItems(data);
+    if (isDemo()) {
+      setItems(DEMO_SHOPPING);
       setLoading(false);
-    }).catch(() => setLoading(false));
+      return;
+    }
+    api.getShopping()
+      .then(setItems)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
   useSocket({

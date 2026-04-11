@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { AISuggestion } from '../types';
 import { api } from '../lib/api';
+import { DEMO_SUGGESTIONS } from '../lib/demoData';
+
+function isDemo(): boolean {
+  return (window as unknown as { __walleDemo?: boolean }).__walleDemo === true;
+}
 
 export function useAISuggestions(date: string | null) {
   const [suggestions, setSuggestions] = useState<AISuggestion[]>([]);
@@ -8,12 +13,16 @@ export function useAISuggestions(date: string | null) {
 
   useEffect(() => {
     if (!date) return;
+    if (isDemo()) {
+      setSuggestions(DEMO_SUGGESTIONS);
+      return;
+    }
     setLoading(true);
     setSuggestions([]);
-    api.getSuggestions(date).then((data) => {
-      setSuggestions(data);
-      setLoading(false);
-    }).catch(() => setLoading(false));
+    api.getSuggestions(date)
+      .then(setSuggestions)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [date]);
 
   const dismiss = (index: number) => {

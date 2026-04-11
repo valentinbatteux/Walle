@@ -2,6 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { Task, CreateTaskInput } from '../types';
 import { api } from '../lib/api';
 import { useSocket } from './useSocket';
+import { DEMO_TASKS } from '../lib/demoData';
+
+function isDemo(): boolean {
+  // Demo mode when backend is not available (GitHub Pages etc.)
+  return (window as unknown as { __walleDemo?: boolean }).__walleDemo === true;
+}
 
 export function useTasks(date: string) {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -9,20 +15,22 @@ export function useTasks(date: string) {
 
   useEffect(() => {
     setLoading(true);
-    api.getTasks(date).then((data) => {
-      setTasks(data);
+    if (isDemo()) {
+      setTasks(DEMO_TASKS.filter(t => t.date === date));
       setLoading(false);
-    }).catch(() => setLoading(false));
+      return;
+    }
+    api.getTasks(date)
+      .then(setTasks)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [date]);
 
   useSocket({
     'task:created': (data) => {
       const task = data as Task;
       if (task.date === date) {
-        setTasks(prev => {
-          if (prev.some(t => t.id === task.id)) return prev;
-          return [...prev, task];
-        });
+        setTasks(prev => prev.some(t => t.id === task.id) ? prev : [...prev, task]);
       }
     },
     'task:updated': (data) => {
@@ -48,32 +56,33 @@ export function useTasks(date: string) {
       ...rest,
     };
     setTasks(prev => [...prev, optimistic]);
+    if (isDemo()) return optimistic;
     try {
       const created = await api.createTask(input);
       setTasks(prev => prev.map(t => t.id === tempId ? created : t));
       return created;
-    } catch (err) {
+    } catch {
       setTasks(prev => prev.filter(t => t.id !== tempId));
-      throw err;
+      return optimistic;
     }
   }, []);
 
   const toggleTask = useCallback(async (id: number) => {
     setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: t.completed ? 0 : 1 } : t));
-    try {
-      const updated = await api.toggleTask(id);
-      setTasks(prev => prev.map(t => t.id === id ? updated : t));
-    } catch {
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: t.completed ? 0 : 1 } : t));
+    if (!isDemo()) {
+      try {
+        const updated = await api.toggleTask(id);
+        setTasks(prev => prev.map(t => t.id === id ? updated : t));
+      } catch {
+        setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: t.completed ? 0 : 1 } : t));
+      }
     }
   }, []);
 
   const deleteTask = useCallback(async (id: number) => {
     setTasks(prev => prev.filter(t => t.id !== id));
-    await api.deleteTask(id).catch(() => {
-      api.getTasks(date).then(setTasks);
-    });
-  }, [date]);
+    if (!isDemo()) await api.deleteTask(id).catch(() => {});
+  }, []);
 
   return { tasks, loading, addTask, toggleTask, deleteTask };
 }
@@ -84,20 +93,22 @@ export function useTaskRange(from: string, to: string) {
 
   useEffect(() => {
     setLoading(true);
-    api.getTaskRange(from, to).then((data) => {
-      setTasks(data);
+    if (isDemo()) {
+      setTasks(DEMO_TASKS.filter(t => t.date >= from && t.date <= to));
       setLoading(false);
-    }).catch(() => setLoading(false));
+      return;
+    }
+    api.getTaskRange(from, to)
+      .then(setTasks)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [from, to]);
 
   useSocket({
     'task:created': (data) => {
       const task = data as Task;
       if (task.date >= from && task.date <= to) {
-        setTasks(prev => {
-          if (prev.some(t => t.id === task.id)) return prev;
-          return [...prev, task];
-        });
+        setTasks(prev => prev.some(t => t.id === task.id) ? prev : [...prev, task]);
       }
     },
     'task:updated': (data) => {
