@@ -67,7 +67,21 @@ export function useWidgetConfig() {
     });
   }, []);
 
+  const swap = useCallback((id1: WidgetId, id2: WidgetId) => {
+    setWidgets(prev => {
+      const o1 = prev[id1].order;
+      const o2 = prev[id2].order;
+      const next = {
+        ...prev,
+        [id1]: { ...prev[id1], order: o2 } as WidgetConfig,
+        [id2]: { ...prev[id2], order: o1 } as WidgetConfig,
+      };
+      save(next);
+      return next;
+    });
+  }, []);
+
   const sorted = Object.values(widgets).sort((a, b) => a.order - b.order);
 
-  return { widgets, sorted, update, toggle, reorder };
+  return { widgets, sorted, update, toggle, reorder, swap };
 }

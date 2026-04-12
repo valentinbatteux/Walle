@@ -79,7 +79,7 @@ function ScrollHint() {
 export function TabletApp() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { widgets, sorted, toggle, update, reorder } = useWidgetConfig();
+  const { widgets, sorted, toggle, update, reorder, swap } = useWidgetConfig();
 
   const handleSelectDate = (date: string) => setSelectedDate(date || null);
   const handleClose = () => setSelectedDate(null);
@@ -170,7 +170,7 @@ export function TabletApp() {
           <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, rgba(255,255,255,0.08), transparent)' }} />
         </div>
 
-        <WidgetGrid widgets={sorted} />
+        <WidgetGrid widgets={sorted} onSwap={swap} />
       </div>
 
       {/* Task panel overlay */}
