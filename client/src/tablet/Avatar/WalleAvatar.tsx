@@ -16,9 +16,9 @@ const MARGIN = 60;
 const WALL   = 130; // wall-avoidance activation distance
 
 type Expr = 'idle' | 'curious' | 'happy' | 'sleepy' | 'blink' | 'wide' | 'sleeping';
-interface Props { size?: number; onClick?: () => void; }
+interface Props { size?: number; onClick?: () => void; chatMode?: boolean; }
 
-export function WalleAvatar({ size = 170, onClick }: Props) {
+export function WalleAvatar({ size = 170, onClick, chatMode = false }: Props) {
   const [hovered, setHovered] = useState(false);
   const [expr, setExpr]       = useState<Expr>('idle');
   const [sleeping, setSleeping] = useState(false);
@@ -41,6 +41,10 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
   const behaviourRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef        = useRef<number>(0);
+  const chatModeRef   = useRef(chatMode);
+
+  // Sync chatMode prop into ref so the RAF loop sees it without re-creating
+  useEffect(() => { chatModeRef.current = chatMode; }, [chatMode]);
 
   // Physics state — mutable ref, no re-renders needed
   const physRef = useRef({
@@ -71,32 +75,40 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
       const W = vpW.current;
       const H = vpH.current;
 
-      // Gradual random angular drift → natural curves
-      p.angle += (Math.random() * 2 - 1) * 0.02;
+      if (chatModeRef.current) {
+        // Chat mode: smoothly spring toward left-center position
+        const targetX = 20;
+        const targetY = H / 2 - half;
+        p.x += (targetX - p.x) * 0.07;
+        p.y += (targetY - p.y) * 0.07;
+      } else {
+        // Normal wandering: gradual random angular drift → natural curves
+        p.angle += (Math.random() * 2 - 1) * 0.02;
 
-      // Wall avoidance: steer toward viewport center proportionally
-      const toCenter = Math.atan2(H / 2 - p.y, W / 2 - p.x);
-      let diff = ((toCenter - p.angle) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+        // Wall avoidance: steer toward viewport center proportionally
+        const toCenter = Math.atan2(H / 2 - p.y, W / 2 - p.x);
+        const diff = ((toCenter - p.angle) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
 
-      const lx = p.x - MARGIN;
-      const rx = (W - size - MARGIN) - p.x;
-      const ty = p.y - MARGIN;
-      const by = (H - size - MARGIN) - p.y;
+        const lx = p.x - MARGIN;
+        const rx = (W - size - MARGIN) - p.x;
+        const ty = p.y - MARGIN;
+        const by = (H - size - MARGIN) - p.y;
 
-      const wallStrength = Math.max(
-        lx < WALL ? (1 - lx / WALL) * 0.09 : 0,
-        rx < WALL ? (1 - rx / WALL) * 0.09 : 0,
-        ty < WALL ? (1 - ty / WALL) * 0.09 : 0,
-        by < WALL ? (1 - by / WALL) * 0.09 : 0,
-      );
+        const wallStrength = Math.max(
+          lx < WALL ? (1 - lx / WALL) * 0.09 : 0,
+          rx < WALL ? (1 - rx / WALL) * 0.09 : 0,
+          ty < WALL ? (1 - ty / WALL) * 0.09 : 0,
+          by < WALL ? (1 - by / WALL) * 0.09 : 0,
+        );
 
-      if (wallStrength > 0) {
-        p.angle += Math.sign(diff) * Math.min(Math.abs(diff), wallStrength);
+        if (wallStrength > 0) {
+          p.angle += Math.sign(diff) * Math.min(Math.abs(diff), wallStrength);
+        }
+
+        // Advance position
+        p.x = Math.max(MARGIN, Math.min(W - size - MARGIN, p.x + Math.cos(p.angle) * p.speed));
+        p.y = Math.max(MARGIN, Math.min(H - size - MARGIN, p.y + Math.sin(p.angle) * p.speed));
       }
-
-      // Advance position
-      p.x = Math.max(MARGIN, Math.min(W - size - MARGIN, p.x + Math.cos(p.angle) * p.speed));
-      p.y = Math.max(MARGIN, Math.min(H - size - MARGIN, p.y + Math.sin(p.angle) * p.speed));
 
       posX.set(p.x);
       posY.set(p.y);
@@ -106,7 +118,7 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
 
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [posX, posY, size]); // size is stable; posX/posY refs are stable
+  }, [posX, posY, size, half]); // chatModeRef is a ref — no dep needed
 
   // ── Scroll-based scale ───────────────────────────────────────────────────────
   useEffect(() => {
