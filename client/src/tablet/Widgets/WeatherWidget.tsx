@@ -1,4 +1,4 @@
-import { motion } from 'framer-motion';
+import { motion, DragControls } from 'framer-motion';
 import { WidgetCard } from './WidgetCard';
 import { WeatherConfig } from '../../types/widgets';
 import { useWeather } from '../../hooks/useWeather';
@@ -16,13 +16,13 @@ const WeatherIcon = () => (
   </svg>
 );
 
-interface Props { config: WeatherConfig; selected?: boolean; onSelect?: () => void; }
+interface Props { config: WeatherConfig; dragControls: DragControls; isDragging?: boolean; onSettingsClick?: () => void; }
 
-export function WeatherWidget({ config, selected, onSelect }: Props) {
+export function WeatherWidget({ config, dragControls, isDragging, onSettingsClick }: Props) {
   const { data, loading, error } = useWeather(config.city);
 
   return (
-    <WidgetCard id="weather" title={data?.city ?? config.city} icon={<WeatherIcon />} selected={selected} onSelect={onSelect}>
+    <WidgetCard id="weather" title={data?.city ?? config.city} icon={<WeatherIcon />} dragControls={dragControls} isDragging={isDragging} onSettingsClick={onSettingsClick}>
       {loading && !data && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minHeight: 90, justifyContent: 'center' }}>
           <motion.div

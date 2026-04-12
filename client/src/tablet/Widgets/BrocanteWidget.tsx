@@ -1,3 +1,4 @@
+import { DragControls } from 'framer-motion';
 import { WidgetCard } from './WidgetCard';
 import { BrocanteConfig } from '../../types/widgets';
 
@@ -70,16 +71,16 @@ const txt  = 'rgba(255,255,255,0.92)';
 const mute = 'rgba(255,255,255,0.5)';
 const dim  = 'rgba(255,255,255,0.28)';
 
-interface Props { config: BrocanteConfig; selected?: boolean; onSelect?: () => void; }
+interface Props { config: BrocanteConfig; dragControls: DragControls; isDragging?: boolean; onSettingsClick?: () => void; }
 
-export function BrocanteWidget({ config, selected, onSelect }: Props) {
+export function BrocanteWidget({ config, dragControls, isDragging, onSettingsClick }: Props) {
   const key = normalize(config.city);
   const cityKey = Object.keys(CITY_EVENTS).find(k => key.includes(k) || k.includes(key)) ?? null;
   const source = cityKey ? CITY_EVENTS[cityKey] : GENERIC.map(e => ({ ...e, city: config.city }));
   const inRange = source.filter(e => e.dist <= config.radiusKm);
 
   return (
-    <WidgetCard id="brocante" title={`Brocantes · ${config.city}`} icon={<ShopIcon />} selected={selected} onSelect={onSelect}>
+    <WidgetCard id="brocante" title={`Brocantes · ${config.city}`} icon={<ShopIcon />} dragControls={dragControls} isDragging={isDragging} onSettingsClick={onSettingsClick}>
       {inRange.length === 0 ? (
         <p style={{ fontSize: '0.75rem', color: mute, textAlign: 'center', padding: '0.5rem 0' }}>
           Aucune brocante dans {config.radiusKm} km

@@ -1,3 +1,4 @@
+import { DragControls } from 'framer-motion';
 import { WidgetCard } from './WidgetCard';
 import { TasksConfig } from '../../types/widgets';
 import { useTasks } from '../../hooks/useTasks';
@@ -15,9 +16,9 @@ const dim  = 'rgba(255,255,255,0.28)';
 
 const PRIO: Record<string, string> = { high: '#f87171', medium: '#fbbf24', low: '#6ee7b7' };
 
-interface Props { config: TasksConfig; selected?: boolean; onSelect?: () => void; }
+interface Props { config: TasksConfig; dragControls: DragControls; isDragging?: boolean; onSettingsClick?: () => void; }
 
-export function TasksWidget({ config, selected, onSelect }: Props) {
+export function TasksWidget({ config, dragControls, isDragging, onSettingsClick }: Props) {
   const { tasks } = useTasks(todayString());
   const visible = config.showCompleted ? tasks : tasks.filter(t => t.completed !== 1 && t.completed !== -1);
   const done  = tasks.filter(t => t.completed === 1).length;
@@ -25,7 +26,7 @@ export function TasksWidget({ config, selected, onSelect }: Props) {
   const pct   = total > 0 ? Math.round((done / total) * 100) : 0;
 
   return (
-    <WidgetCard id="tasks" title="Aujourd'hui" icon={<CheckIcon />} selected={selected} onSelect={onSelect}>
+    <WidgetCard id="tasks" title="Aujourd'hui" icon={<CheckIcon />} dragControls={dragControls} isDragging={isDragging} onSettingsClick={onSettingsClick}>
       {/* Big percentage stat */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.25rem', marginBottom: '0.55rem' }}>
         <span style={{ fontSize: '2.6rem', fontWeight: 200, color: txt, lineHeight: 1 }}>{pct}%</span>

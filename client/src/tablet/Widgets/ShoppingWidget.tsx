@@ -1,3 +1,4 @@
+import { DragControls } from 'framer-motion';
 import { WidgetCard } from './WidgetCard';
 import { ShoppingConfig } from '../../types/widgets';
 import { useShopping } from '../../hooks/useShopping';
@@ -12,15 +13,15 @@ const CartIcon = () => (
 const txt  = 'rgba(255,255,255,0.92)';
 const mute = 'rgba(255,255,255,0.5)';
 
-interface Props { config: ShoppingConfig; selected?: boolean; onSelect?: () => void; }
+interface Props { config: ShoppingConfig; dragControls: DragControls; isDragging?: boolean; onSettingsClick?: () => void; }
 
-export function ShoppingWidget({ config, selected, onSelect }: Props) {
+export function ShoppingWidget({ config, dragControls, isDragging, onSettingsClick }: Props) {
   const { items } = useShopping();
   const pending = items.filter(i => i.completed !== 1).slice(0, config.maxItems);
   const total = items.filter(i => i.completed !== 1).length;
 
   return (
-    <WidgetCard id="shopping" title="Courses" icon={<CartIcon />} selected={selected} onSelect={onSelect}>
+    <WidgetCard id="shopping" title="Courses" icon={<CartIcon />} dragControls={dragControls} isDragging={isDragging} onSettingsClick={onSettingsClick}>
       {/* Big count */}
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.35rem', marginBottom: '0.6rem' }}>
         <span style={{ fontSize: '2.2rem', fontWeight: 200, color: txt, lineHeight: 1 }}>{total}</span>

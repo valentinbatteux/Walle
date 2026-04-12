@@ -1,3 +1,4 @@
+import { DragControls } from 'framer-motion';
 import { WidgetCard } from './WidgetCard';
 import { FootballConfig } from '../../types/widgets';
 
@@ -51,15 +52,15 @@ const txt  = 'rgba(255,255,255,0.92)';
 const mute = 'rgba(255,255,255,0.5)';
 const dim  = 'rgba(255,255,255,0.28)';
 
-interface Props { config: FootballConfig; selected?: boolean; onSelect?: () => void; }
+interface Props { config: FootballConfig; dragControls: DragControls; isDragging?: boolean; onSettingsClick?: () => void; }
 
-export function FootballWidget({ config, selected, onSelect }: Props) {
+export function FootballWidget({ config, dragControls, isDragging, onSettingsClick }: Props) {
   const teams = config.teams.filter(t => t.trim().length > 0);
   const relevant = teams.length === 0 ? [] :
     ALL_MATCHES.filter(m => matchesTeam(m.home, teams) || matchesTeam(m.away, teams)).slice(0, 4);
 
   return (
-    <WidgetCard id="football" title="Football" icon={<BallIcon />} wide selected={selected} onSelect={onSelect}>
+    <WidgetCard id="football" title="Football" icon={<BallIcon />} wide dragControls={dragControls} isDragging={isDragging} onSettingsClick={onSettingsClick}>
       {teams.length === 0 ? (
         <p style={{ fontSize: '0.75rem', color: mute, textAlign: 'center', padding: '0.5rem 0' }}>
           Ajoutez des équipes dans les paramètres

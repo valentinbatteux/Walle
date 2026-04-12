@@ -170,7 +170,7 @@ export function TabletApp() {
           <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, rgba(255,255,255,0.08), transparent)' }} />
         </div>
 
-        <WidgetGrid widgets={sorted} onSwap={swap} />
+        <WidgetGrid widgets={sorted} widgetMap={widgets} onSwap={swap} onUpdate={update} onToggle={toggle} />
       </div>
 
       {/* Task panel overlay */}
