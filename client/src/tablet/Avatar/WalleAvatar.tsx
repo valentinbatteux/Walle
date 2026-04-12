@@ -11,35 +11,45 @@ const PARTICLES = [
   { angle: 75,  r: 1.48, size: 1,   delay: 2.2, dur: 3.8 },
 ];
 
-const SLEEP_AFTER = 4 * 60 * 1000; // 4 minutes
+const SLEEP_AFTER = 4 * 60 * 1000;
+const MARGIN = 50; // min distance from viewport edges
 
 type Expr = 'idle' | 'curious' | 'happy' | 'sleepy' | 'blink' | 'wide' | 'sleeping';
 
 interface Props { size?: number; onClick?: () => void; }
 
-export function WalleAvatar({ size = 180, onClick }: Props) {
+export function WalleAvatar({ size = 170, onClick }: Props) {
   const [hovered, setHovered] = useState(false);
   const [expr, setExpr] = useState<Expr>('idle');
   const [sleeping, setSleeping] = useState(false);
   const half = size / 2;
 
-  // Spring-based eye gaze
+  // Absolute position in viewport (position: fixed, driven by springs)
+  const posXMv = useMotionValue(window.innerWidth  / 2 - half);
+  const posYMv = useMotionValue(window.innerHeight / 2 - half);
+  const posX = useSpring(posXMv, { stiffness: 4, damping: 7 });
+  const posY = useSpring(posYMv, { stiffness: 3, damping: 6 });
+
+  // Eye gaze
   const eyeXMv = useMotionValue(0);
   const eyeYMv = useMotionValue(0);
   const eyeX = useSpring(eyeXMv, { stiffness: 55, damping: 16 });
   const eyeY = useSpring(eyeYMv, { stiffness: 55, damping: 16 });
 
-  // Spring-based body drift — very low stiffness for slow, dreamy movement
-  const bodyXMv = useMotionValue(0);
-  const bodyYMv = useMotionValue(0);
-  const bodyX = useSpring(bodyXMv, { stiffness: 7, damping: 8 });
-  const bodyY = useSpring(bodyYMv, { stiffness: 5, damping: 7 });
-
   const { playChirp, playGreeting, playBlip, playQuestion } = useWalleSounds();
   const greetedRef    = useRef(false);
   const behaviourRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wanderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wanderRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Keep viewport dims in refs (no re-renders needed)
+  const vpW = useRef(window.innerWidth);
+  const vpH = useRef(window.innerHeight);
+  useEffect(() => {
+    const onResize = () => { vpW.current = window.innerWidth; vpH.current = window.innerHeight; };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   // ── Sleep management ────────────────────────────────────────────────────────
   const resetSleepTimer = useCallback(() => {
@@ -66,31 +76,31 @@ export function WalleAvatar({ size = 180, onClick }: Props) {
     };
   }, [resetSleepTimer]);
 
-  // ── Continuous wander — drifts lazily around its space ──────────────────────
+  // ── Free roam across the full viewport ─────────────────────────────────────
   const scheduleWander = useCallback(() => {
     const delay = sleeping
-      ? 8000 + Math.random() * 10000   // sleeping: 8–18 s
-      : 3000 + Math.random() * 5000;   // active: 3–8 s
+      ? 9000  + Math.random() * 12000   // sleeping: 9–21 s
+      : 2500  + Math.random() * 4500;   // active: 2.5–7 s
 
-    wanderTimerRef.current = setTimeout(() => {
-      const maxX = size * 0.45;        // ±90px for size=200
-      const maxY = size * 0.28;        // ±56px for size=200
-      bodyXMv.set((Math.random() - 0.5) * 2 * maxX);
-      bodyYMv.set((Math.random() - 0.5) * 2 * maxY);
+    wanderRef.current = setTimeout(() => {
+      const maxX = vpW.current - size - MARGIN;
+      const maxY = vpH.current - size - MARGIN;
+      posXMv.set(MARGIN + Math.random() * Math.max(0, maxX - MARGIN));
+      posYMv.set(MARGIN + Math.random() * Math.max(0, maxY - MARGIN));
       scheduleWander();
     }, delay);
-  }, [sleeping, size, bodyXMv, bodyYMv]);
+  }, [sleeping, size, posXMv, posYMv]);
 
   useEffect(() => {
     scheduleWander();
-    return () => { if (wanderTimerRef.current) clearTimeout(wanderTimerRef.current); };
+    return () => { if (wanderRef.current) clearTimeout(wanderRef.current); };
   }, [scheduleWander]);
 
-  // ── Behaviour scheduler ─────────────────────────────────────────────────────
+  // ── Behaviour scheduler (eye/expression only now that position roams freely) ─
   const scheduleBehaviour = useCallback(() => {
     const delay = sleeping
       ? 12000 + Math.random() * 18000
-      : 3500 + Math.random() * 7000;
+      : 3000  + Math.random() * 6000;
 
     behaviourRef.current = setTimeout(() => {
       if (sleeping) {
@@ -105,69 +115,48 @@ export function WalleAvatar({ size = 180, onClick }: Props) {
 
       const roll = Math.random();
 
-      if (roll < 0.18) {
-        // Look left / right — body leans in gaze direction
+      if (roll < 0.2) {
         const dir = Math.random() > 0.5 ? 1 : -1;
-        eyeXMv.set(dir * size * 0.028);
-        eyeYMv.set(0);
+        eyeXMv.set(dir * size * 0.030);
         setExpr('curious');
         playQuestion();
-        bodyXMv.set(dir * size * 0.15);
-        setTimeout(() => { eyeXMv.set(0); setExpr('idle'); bodyXMv.set(0); }, 2200);
+        setTimeout(() => { eyeXMv.set(0); setExpr('idle'); }, 2200);
 
-      } else if (roll < 0.32) {
-        // Look up-left (thinking pose)
+      } else if (roll < 0.35) {
         eyeXMv.set(-size * 0.02);
         eyeYMv.set(-size * 0.022);
         setExpr('curious');
-        bodyYMv.set(-size * 0.12);
-        setTimeout(() => { eyeXMv.set(0); eyeYMv.set(0); setExpr('idle'); bodyYMv.set(0); }, 2500);
+        setTimeout(() => { eyeXMv.set(0); eyeYMv.set(0); setExpr('idle'); }, 2500);
 
-      } else if (roll < 0.44) {
-        // Look down (shy/thoughtful)
+      } else if (roll < 0.48) {
         eyeYMv.set(size * 0.018);
         setExpr('sleepy');
-        bodyYMv.set(size * 0.10);
-        setTimeout(() => { eyeYMv.set(0); setExpr('idle'); bodyYMv.set(0); }, 2000);
+        setTimeout(() => { eyeYMv.set(0); setExpr('idle'); }, 2000);
 
-      } else if (roll < 0.55) {
-        // Double blink
+      } else if (roll < 0.60) {
         setExpr('blink');
         setTimeout(() => setExpr('idle'), 250);
         setTimeout(() => setExpr('blink'), 500);
         setTimeout(() => setExpr('idle'), 750);
 
-      } else if (roll < 0.63) {
-        // Happy wiggle
+      } else if (roll < 0.70) {
         setExpr('happy');
         playBlip();
-        bodyXMv.set(size * 0.12);
-        setTimeout(() => bodyXMv.set(-size * 0.12), 200);
-        setTimeout(() => bodyXMv.set(0), 400);
         setTimeout(() => setExpr('idle'), 900);
 
-      } else if (roll < 0.70) {
-        // Wide-eyed surprise — jumps up a bit
+      } else if (roll < 0.80) {
         setExpr('wide');
-        bodyYMv.set(-size * 0.18);
-        setTimeout(() => { setExpr('idle'); bodyYMv.set(0); }, 1200);
-
-      } else if (roll < 0.78) {
-        // Idle blip sound + micro-look
-        playBlip();
-        eyeXMv.set((Math.random() - 0.5) * size * 0.012);
-        setTimeout(() => eyeXMv.set(0), 600);
+        setTimeout(() => setExpr('idle'), 1200);
 
       } else {
-        // Slow nod
-        bodyYMv.set(size * 0.10);
-        setTimeout(() => bodyYMv.set(-size * 0.06), 350);
-        setTimeout(() => bodyYMv.set(0), 700);
+        playBlip();
+        eyeXMv.set((Math.random() - 0.5) * size * 0.014);
+        setTimeout(() => eyeXMv.set(0), 700);
       }
 
       scheduleBehaviour();
     }, delay);
-  }, [sleeping, size, eyeXMv, eyeYMv, bodyXMv, bodyYMv, playBlip, playQuestion]);
+  }, [sleeping, size, eyeXMv, eyeYMv, playBlip, playQuestion]);
 
   useEffect(() => {
     scheduleBehaviour();
@@ -185,10 +174,9 @@ export function WalleAvatar({ size = 180, onClick }: Props) {
     }
     setExpr('happy');
     eyeYMv.set(-size * 0.018);
-    bodyYMv.set(-size * 0.08);
-    setTimeout(() => { setExpr('idle'); eyeYMv.set(0); bodyYMv.set(0); }, 800);
+    setTimeout(() => { setExpr('idle'); eyeYMv.set(0); }, 800);
     onClick?.();
-  }, [resetSleepTimer, playGreeting, playChirp, eyeYMv, bodyYMv, size, onClick]);
+  }, [resetSleepTimer, playGreeting, playChirp, eyeYMv, size, onClick]);
 
   // ── Eye shape per expression ────────────────────────────────────────────────
   const eyeScale = (() => {
@@ -214,15 +202,25 @@ export function WalleAvatar({ size = 180, onClick }: Props) {
   const breathAmt = sleeping ? 1.008 : 1.025;
 
   return (
-    <motion.div style={{ x: bodyX, y: bodyY, position: 'relative' }}>
+    // Outer: position:fixed, moved by posX/posY springs
+    <motion.div
+      style={{
+        position: 'fixed', left: 0, top: 0,
+        x: posX, y: posY,
+        width: size, height: size,
+        zIndex: 15,
+        cursor: 'pointer',
+      }}
+      onHoverStart={() => !sleeping && setHovered(true)}
+      onHoverEnd={() => setHovered(false)}
+      onClick={handleClick}
+      whileTap={{ scale: 0.95 }}
+    >
+      {/* Inner: breathing float animation, isolated from position spring */}
       <motion.div
-        style={{ width: size, height: size, position: 'relative', cursor: 'pointer' }}
+        style={{ width: '100%', height: '100%', position: 'relative' }}
         animate={{ y: sleeping ? [0, -4, 0] : [0, -10, 0] }}
         transition={{ duration: sleeping ? 7 : 5, repeat: Infinity, ease: 'easeInOut' }}
-        onHoverStart={() => !sleeping && setHovered(true)}
-        onHoverEnd={() => setHovered(false)}
-        onClick={handleClick}
-        whileTap={{ scale: 0.95 }}
       >
         {/* Outer ambient glow */}
         <motion.div
@@ -354,7 +352,7 @@ export function WalleAvatar({ size = 180, onClick }: Props) {
                 x: [0, Math.cos(rad + 0.5) * 8, 0],
                 y: [0, Math.sin(rad + 0.5) * 8, 0],
                 opacity: sleeping ? [0, 0.2, 0] : [0, 0.9, 0.5, 0.9, 0],
-                scale: sleeping ? [0.3, 0.6, 0.3] : [0.5, 1.2, 0.8, 1, 0.5],
+                scale:   sleeping ? [0.3, 0.6, 0.3] : [0.5, 1.2, 0.8, 1, 0.5],
               }}
               transition={{ duration: sleeping ? p.dur * 2 : p.dur, repeat: Infinity, delay: p.delay, ease: 'easeInOut' }}
               style={{

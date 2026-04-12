@@ -79,7 +79,7 @@ function ScrollHint() {
 export function TabletApp() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const { widgets, sorted, toggle, update, reorder, reorderAll } = useWidgetConfig();
+  const { widgets, sorted, toggle, update, reorder, swap } = useWidgetConfig();
 
   const handleSelectDate = (date: string) => setSelectedDate(date || null);
   const handleClose = () => setSelectedDate(null);
@@ -87,6 +87,9 @@ export function TabletApp() {
   return (
     <div style={{ position: 'relative', minHeight: '100vh' }}>
       <DynamicBackground />
+
+      {/* Avatar roams freely across the full viewport (position:fixed inside) */}
+      <WalleAvatar onClick={() => setSelectedDate(todayString())} />
 
       {/* Fixed top clock — tapping opens settings */}
       <TopClock onClick={() => setSettingsOpen(s => !s)} />
@@ -120,29 +123,8 @@ export function TabletApp() {
         position: 'relative', height: '100vh', display: 'flex',
         flexDirection: 'column', overflow: 'hidden',
       }}>
-        {/* Centered avatar */}
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1.5rem' }}>
-            <WalleAvatar
-              size={200}
-              onClick={() => setSelectedDate(todayString())}
-            />
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1 }}
-              style={{
-                fontSize: '0.72rem',
-                fontWeight: 300,
-                color: 'rgba(255,255,255,0.28)',
-                letterSpacing: '0.22em',
-                textTransform: 'uppercase',
-              }}
-            >
-              Touchez pour commencer
-            </motion.p>
-          </div>
-        </div>
+        {/* Empty center — avatar now roams freely across the screen */}
+        <div style={{ flex: 1 }} />
 
         {/* Scroll hint */}
         <ScrollHint />
@@ -170,7 +152,7 @@ export function TabletApp() {
           <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, rgba(255,255,255,0.08), transparent)' }} />
         </div>
 
-        <WidgetGrid widgets={sorted} widgetMap={widgets} onReorderAll={reorderAll} onUpdate={update} onToggle={toggle} />
+        <WidgetGrid widgets={sorted} widgetMap={widgets} onSwap={swap} onUpdate={update} onToggle={toggle} />
       </div>
 
       {/* Task panel overlay */}
