@@ -81,7 +81,18 @@ export function useWidgetConfig() {
     });
   }, []);
 
+  const reorderAll = useCallback((newIds: WidgetId[]) => {
+    setWidgets(prev => {
+      const next = { ...prev };
+      newIds.forEach((id, i) => {
+        next[id] = { ...next[id], order: i } as WidgetConfig;
+      });
+      save(next);
+      return next;
+    });
+  }, []);
+
   const sorted = Object.values(widgets).sort((a, b) => a.order - b.order);
 
-  return { widgets, sorted, update, toggle, reorder, swap };
+  return { widgets, sorted, update, toggle, reorder, swap, reorderAll };
 }
