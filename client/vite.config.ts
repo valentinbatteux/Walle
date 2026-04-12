@@ -13,7 +13,9 @@ export default defineConfig({
       },
     },
   },
-  base: '/Walle/',
+  // Local dev/prod: base '/'
+  // GitHub Pages: set env VITE_BASE_PATH=/Walle/
+  base: process.env.VITE_BASE_PATH ?? '/',
   build: {
     outDir: 'dist',
   },
