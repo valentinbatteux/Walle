@@ -1,4 +1,4 @@
-import { motion, useSpring, useMotionValue, AnimatePresence } from 'framer-motion';
+import { motion, useMotionValue, useSpring, AnimatePresence } from 'framer-motion';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useWalleSounds } from '../../hooks/useWalleSounds';
 
@@ -12,27 +12,27 @@ const PARTICLES = [
 ];
 
 const SLEEP_AFTER = 4 * 60 * 1000;
-const MARGIN = 50; // min distance from viewport edges
+const MARGIN = 60;
+const WALL   = 130; // wall-avoidance activation distance
 
 type Expr = 'idle' | 'curious' | 'happy' | 'sleepy' | 'blink' | 'wide' | 'sleeping';
-
 interface Props { size?: number; onClick?: () => void; }
 
 export function WalleAvatar({ size = 170, onClick }: Props) {
   const [hovered, setHovered] = useState(false);
-  const [expr, setExpr] = useState<Expr>('idle');
+  const [expr, setExpr]       = useState<Expr>('idle');
   const [sleeping, setSleeping] = useState(false);
+  const [avatarScale, setAvatarScale] = useState(1);
   const half = size / 2;
 
-  // Absolute position in viewport (position: fixed, driven by springs)
-  const posXMv = useMotionValue(window.innerWidth  / 2 - half);
-  const posYMv = useMotionValue(window.innerHeight / 2 - half);
-  const posX = useSpring(posXMv, { stiffness: 4, damping: 7 });
-  const posY = useSpring(posYMv, { stiffness: 3, damping: 6 });
+  // Absolute viewport position — plain MotionValues, driven by RAF
+  const posX = useMotionValue(window.innerWidth  / 2 - half);
+  const posY = useMotionValue(window.innerHeight / 2 - half);
 
-  // Eye gaze
+  // Eye springs
   const eyeXMv = useMotionValue(0);
   const eyeYMv = useMotionValue(0);
+  // (keep springs for eyes only — they don't need 60fps updates)
   const eyeX = useSpring(eyeXMv, { stiffness: 55, damping: 16 });
   const eyeY = useSpring(eyeYMv, { stiffness: 55, damping: 16 });
 
@@ -40,9 +40,17 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
   const greetedRef    = useRef(false);
   const behaviourRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wanderRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rafRef        = useRef<number>(0);
 
-  // Keep viewport dims in refs (no re-renders needed)
+  // Physics state — mutable ref, no re-renders needed
+  const physRef = useRef({
+    x: window.innerWidth  / 2 - half,
+    y: window.innerHeight / 2 - half,
+    angle: Math.random() * Math.PI * 2,
+    speed: 0.6,
+  });
+
+  // Viewport dims
   const vpW = useRef(window.innerWidth);
   const vpH = useRef(window.innerHeight);
   useEffect(() => {
@@ -51,7 +59,66 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
     return () => window.removeEventListener('resize', onResize);
   }, []);
 
-  // ── Sleep management ────────────────────────────────────────────────────────
+  // Sync sleeping state → physics speed
+  useEffect(() => {
+    physRef.current.speed = sleeping ? 0.15 : 0.6;
+  }, [sleeping]);
+
+  // ── RAF wandering loop (organic curved paths) ────────────────────────────────
+  useEffect(() => {
+    const loop = () => {
+      const p = physRef.current;
+      const W = vpW.current;
+      const H = vpH.current;
+
+      // Gradual random angular drift → natural curves
+      p.angle += (Math.random() * 2 - 1) * 0.02;
+
+      // Wall avoidance: steer toward viewport center proportionally
+      const toCenter = Math.atan2(H / 2 - p.y, W / 2 - p.x);
+      let diff = ((toCenter - p.angle) + 3 * Math.PI) % (2 * Math.PI) - Math.PI;
+
+      const lx = p.x - MARGIN;
+      const rx = (W - size - MARGIN) - p.x;
+      const ty = p.y - MARGIN;
+      const by = (H - size - MARGIN) - p.y;
+
+      const wallStrength = Math.max(
+        lx < WALL ? (1 - lx / WALL) * 0.09 : 0,
+        rx < WALL ? (1 - rx / WALL) * 0.09 : 0,
+        ty < WALL ? (1 - ty / WALL) * 0.09 : 0,
+        by < WALL ? (1 - by / WALL) * 0.09 : 0,
+      );
+
+      if (wallStrength > 0) {
+        p.angle += Math.sign(diff) * Math.min(Math.abs(diff), wallStrength);
+      }
+
+      // Advance position
+      p.x = Math.max(MARGIN, Math.min(W - size - MARGIN, p.x + Math.cos(p.angle) * p.speed));
+      p.y = Math.max(MARGIN, Math.min(H - size - MARGIN, p.y + Math.sin(p.angle) * p.speed));
+
+      posX.set(p.x);
+      posY.set(p.y);
+
+      rafRef.current = requestAnimationFrame(loop);
+    };
+
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [posX, posY, size]); // size is stable; posX/posY refs are stable
+
+  // ── Scroll-based scale ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const onScroll = () => {
+      const ratio = Math.min(window.scrollY / window.innerHeight, 1);
+      setAvatarScale(1 - 0.55 * ratio);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // ── Sleep management ─────────────────────────────────────────────────────────
   const resetSleepTimer = useCallback(() => {
     if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
     if (sleeping) {
@@ -76,27 +143,7 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
     };
   }, [resetSleepTimer]);
 
-  // ── Free roam across the full viewport ─────────────────────────────────────
-  const scheduleWander = useCallback(() => {
-    const delay = sleeping
-      ? 9000  + Math.random() * 12000   // sleeping: 9–21 s
-      : 2500  + Math.random() * 4500;   // active: 2.5–7 s
-
-    wanderRef.current = setTimeout(() => {
-      const maxX = vpW.current - size - MARGIN;
-      const maxY = vpH.current - size - MARGIN;
-      posXMv.set(MARGIN + Math.random() * Math.max(0, maxX - MARGIN));
-      posYMv.set(MARGIN + Math.random() * Math.max(0, maxY - MARGIN));
-      scheduleWander();
-    }, delay);
-  }, [sleeping, size, posXMv, posYMv]);
-
-  useEffect(() => {
-    scheduleWander();
-    return () => { if (wanderRef.current) clearTimeout(wanderRef.current); };
-  }, [scheduleWander]);
-
-  // ── Behaviour scheduler (eye/expression only now that position roams freely) ─
+  // ── Behaviour scheduler (eye / expression only) ──────────────────────────────
   const scheduleBehaviour = useCallback(() => {
     const delay = sleeping
       ? 12000 + Math.random() * 18000
@@ -114,40 +161,29 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
       }
 
       const roll = Math.random();
-
-      if (roll < 0.2) {
+      if (roll < 0.20) {
         const dir = Math.random() > 0.5 ? 1 : -1;
         eyeXMv.set(dir * size * 0.030);
-        setExpr('curious');
-        playQuestion();
+        setExpr('curious'); playQuestion();
         setTimeout(() => { eyeXMv.set(0); setExpr('idle'); }, 2200);
-
       } else if (roll < 0.35) {
-        eyeXMv.set(-size * 0.02);
-        eyeYMv.set(-size * 0.022);
+        eyeXMv.set(-size * 0.02); eyeYMv.set(-size * 0.022);
         setExpr('curious');
         setTimeout(() => { eyeXMv.set(0); eyeYMv.set(0); setExpr('idle'); }, 2500);
-
       } else if (roll < 0.48) {
-        eyeYMv.set(size * 0.018);
-        setExpr('sleepy');
+        eyeYMv.set(size * 0.018); setExpr('sleepy');
         setTimeout(() => { eyeYMv.set(0); setExpr('idle'); }, 2000);
-
       } else if (roll < 0.60) {
         setExpr('blink');
         setTimeout(() => setExpr('idle'), 250);
         setTimeout(() => setExpr('blink'), 500);
         setTimeout(() => setExpr('idle'), 750);
-
-      } else if (roll < 0.70) {
-        setExpr('happy');
-        playBlip();
+      } else if (roll < 0.72) {
+        setExpr('happy'); playBlip();
         setTimeout(() => setExpr('idle'), 900);
-
-      } else if (roll < 0.80) {
+      } else if (roll < 0.82) {
         setExpr('wide');
         setTimeout(() => setExpr('idle'), 1200);
-
       } else {
         playBlip();
         eyeXMv.set((Math.random() - 0.5) * size * 0.014);
@@ -163,34 +199,27 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
     return () => { if (behaviourRef.current) clearTimeout(behaviourRef.current); };
   }, [scheduleBehaviour]);
 
-  // ── Click handler ────────────────────────────────────────────────────────────
+  // ── Click handler ─────────────────────────────────────────────────────────────
   const handleClick = useCallback(() => {
     resetSleepTimer();
-    if (!greetedRef.current) {
-      greetedRef.current = true;
-      playGreeting();
-    } else {
-      playChirp();
-    }
+    if (!greetedRef.current) { greetedRef.current = true; playGreeting(); }
+    else { playChirp(); }
     setExpr('happy');
     eyeYMv.set(-size * 0.018);
     setTimeout(() => { setExpr('idle'); eyeYMv.set(0); }, 800);
     onClick?.();
   }, [resetSleepTimer, playGreeting, playChirp, eyeYMv, size, onClick]);
 
-  // ── Eye shape per expression ────────────────────────────────────────────────
+  // ── Eye shape per expression ──────────────────────────────────────────────────
   const eyeScale = (() => {
-    if (sleeping)          return { scaleY: 0.06, scaleX: 1.4 };
-    if (hovered)           return { scaleY: 0.22, scaleX: 1.2 };
-    if (expr === 'blink')  return { scaleY: 0.06, scaleX: 1.3 };
+    if (sleeping)          return { scaleY: 0.06, scaleX: 1.4  };
+    if (hovered)           return { scaleY: 0.22, scaleX: 1.2  };
+    if (expr === 'blink')  return { scaleY: 0.06, scaleX: 1.3  };
     if (expr === 'happy')  return { scaleY: 0.38, scaleX: 1.15 };
     if (expr === 'sleepy') return { scaleY: 0.48, scaleX: 0.92 };
     if (expr === 'curious')return { scaleY: 1.12, scaleX: 0.92 };
     if (expr === 'wide')   return { scaleY: 1.35, scaleX: 0.88 };
-    return {
-      scaleY: [1, 1, 1, 0.06, 1, 1],
-      scaleX: [1, 1, 1, 1.35, 1, 1],
-    };
+    return { scaleY: [1, 1, 1, 0.06, 1, 1], scaleX: [1, 1, 1, 1.35, 1, 1] };
   })();
 
   const eyeTransition = (i: number) =>
@@ -202,27 +231,30 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
   const breathAmt = sleeping ? 1.008 : 1.025;
 
   return (
-    // Outer: position:fixed, moved by posX/posY springs
+    // Outer: fixed position driven by RAF, scales with scroll
     <motion.div
       style={{
         position: 'fixed', left: 0, top: 0,
         x: posX, y: posY,
+        scale: avatarScale,
         width: size, height: size,
         zIndex: 15,
         cursor: 'pointer',
+        transformOrigin: 'center center',
+        transition: 'transform 0.3s ease',
       }}
       onHoverStart={() => !sleeping && setHovered(true)}
       onHoverEnd={() => setHovered(false)}
       onClick={handleClick}
-      whileTap={{ scale: 0.95 }}
+      whileTap={{ scale: avatarScale * 0.95 }}
     >
-      {/* Inner: breathing float animation, isolated from position spring */}
+      {/* Inner: breathing float, isolated from position */}
       <motion.div
         style={{ width: '100%', height: '100%', position: 'relative' }}
         animate={{ y: sleeping ? [0, -4, 0] : [0, -10, 0] }}
         transition={{ duration: sleeping ? 7 : 5, repeat: Infinity, ease: 'easeInOut' }}
       >
-        {/* Outer ambient glow */}
+        {/* Ambient glow */}
         <motion.div
           animate={{ scale: [1, 1.08, 1], opacity: sleeping ? [0.25, 0.35, 0.25] : [0.7, 1, 0.7] }}
           transition={{ duration: sleeping ? 7 : 4, repeat: Infinity, ease: 'easeInOut' }}
@@ -235,13 +267,12 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
           }}
         />
 
-        {/* Teal secondary glow */}
+        {/* Teal glow */}
         <motion.div
           style={{
             position: 'absolute', inset: -size * 0.15, borderRadius: '50%',
             background: `radial-gradient(circle at 70% 30%, rgba(78,205,196,0.18) 0%, transparent 60%)`,
-            filter: `blur(${size * 0.12}px)`, pointerEvents: 'none',
-            opacity: sleeping ? 0.2 : 1,
+            filter: `blur(${size * 0.12}px)`, pointerEvents: 'none', opacity: sleeping ? 0.2 : 1,
           }}
           animate={{ rotate: [0, 360] }}
           transition={{ duration: sleeping ? 30 : 12, repeat: Infinity, ease: 'linear' }}
@@ -264,7 +295,7 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
           }}
         />
 
-        {/* Iridescent border ring */}
+        {/* Iridescent ring */}
         <motion.div
           animate={{ opacity: sleeping ? 0.25 : 0.9 }}
           transition={{ duration: 2 }}
@@ -276,7 +307,7 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
           }}
         />
 
-        {/* Rotating ring shimmer */}
+        {/* Shimmer ring */}
         <motion.div
           animate={{ rotate: [0, 360] }}
           transition={{ duration: sleeping ? 12 : 3, repeat: Infinity, ease: 'linear' }}
@@ -289,13 +320,12 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
           }}
         />
 
-        {/* Specular highlight */}
+        {/* Specular */}
         <div style={{
           position: 'absolute', top: size * 0.12, left: size * 0.2,
           width: size * 0.28, height: size * 0.18, borderRadius: '50%',
           background: 'radial-gradient(ellipse, rgba(255,255,255,0.18) 0%, transparent 100%)',
-          filter: `blur(${size * 0.03}px)`, pointerEvents: 'none',
-          opacity: sleeping ? 0.4 : 1,
+          filter: `blur(${size * 0.03}px)`, pointerEvents: 'none', opacity: sleeping ? 0.4 : 1,
         }} />
 
         {/* Eyes */}
@@ -340,7 +370,7 @@ export function WalleAvatar({ size = 170, onClick }: Props) {
           )}
         </AnimatePresence>
 
-        {/* Floating particles */}
+        {/* Particles */}
         {PARTICLES.map((p, i) => {
           const rad = (p.angle * Math.PI) / 180;
           const cx = half + Math.cos(rad) * half * p.r;
