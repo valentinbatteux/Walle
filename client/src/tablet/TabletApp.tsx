@@ -7,7 +7,6 @@ import { TaskPanel } from './TaskPanel/TaskPanel';
 import { WidgetGrid } from './Widgets/WidgetGrid';
 import { SettingsPanel } from './Settings/SettingsPanel';
 import { WalleChat } from './Chat/WalleChat';
-import { todayString } from './Calendar/calendarUtils';
 import { useClock } from '../hooks/useClock';
 import { useWidgetConfig } from '../hooks/useWidgetConfig';
 
@@ -92,13 +91,11 @@ export function TabletApp() {
     <div style={{ position: 'relative', minHeight: '100vh' }}>
       <DynamicBackground />
 
-      {/* Avatar roams freely — moves left when chat is open */}
+      {/* Avatar: clic → ouvre le chat / reclic → ferme */}
       <WalleAvatar
         size={AVATAR_SIZE}
         chatMode={chatOpen}
-        onClick={() => {
-          if (!chatOpen) setSelectedDate(todayString());
-        }}
+        onClick={() => setChatOpen(o => !o)}
       />
 
       {/* Chat overlay */}
@@ -108,44 +105,6 @@ export function TabletApp() {
         widgetConfig={widgets}
         avatarSize={AVATAR_SIZE}
       />
-
-      {/* Chat trigger button */}
-      <AnimatePresence>
-        {!chatOpen && (
-          <motion.button
-            key="chat-btn"
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.8 }}
-            whileTap={{ scale: 0.92 }}
-            onClick={() => setChatOpen(true)}
-            style={{
-              position: 'fixed',
-              bottom: 32,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 20,
-              padding: '10px 22px',
-              borderRadius: 24,
-              border: '1px solid rgba(167,139,250,0.3)',
-              background: 'rgba(10,5,25,0.75)',
-              backdropFilter: 'blur(12px)',
-              color: 'rgba(167,139,250,0.85)',
-              fontSize: 13,
-              fontWeight: 500,
-              letterSpacing: '0.06em',
-              cursor: 'pointer',
-              boxShadow: '0 0 20px rgba(90,50,180,0.2)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontFamily: 'inherit',
-            }}
-          >
-            <span style={{ fontSize: 16 }}>💬</span> Parler à Walle
-          </motion.button>
-        )}
-      </AnimatePresence>
 
       {/* Fixed top clock — tapping opens settings */}
       <TopClock onClick={() => setSettingsOpen(s => !s)} />

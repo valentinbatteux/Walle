@@ -1,10 +1,10 @@
 import { Router } from 'express';
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { taskService } from '../services/taskService';
 import { shoppingService } from '../services/shoppingService';
 
-const client = process.env.ANTHROPIC_API_KEY
-  ? new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const openai = process.env.OPENAI_API_KEY
+  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   : null;
 
 const SYSTEM = `Tu es Walle, l'assistant IA personnel et attachant d'un tableau de bord domestique installé sur un mur. Tu es curieux, bienveillant, légèrement espiègle, et tu parles toujours en français avec chaleur et naturel.
@@ -39,7 +39,7 @@ function buildContext(
   const pending = tasks.filter(t => !t.completed);
   const done    = tasks.filter(t => t.completed);
   if (pending.length) parts.push(`Tâches du jour en attente (${pending.length}) : ${pending.map(t => t.title).join(', ')}`);
-  else                parts.push('Aucune tâche en attente aujourd\'hui');
+  else                parts.push("Aucune tâche en attente aujourd'hui");
   if (done.length)    parts.push(`Tâches déjà terminées : ${done.map(t => t.title).join(', ')}`);
 
   const pendingShopping = shopping.filter(s => !s.completed);
@@ -64,54 +64,50 @@ export function chatRouter(): Router {
 
     if (!message?.trim()) return res.status(400).json({ error: 'Message vide' });
 
-    // Fetch live data from DB
-    const today   = new Date().toISOString().split('T')[0];
-    const tasks   = taskService.getByDate(today);
+    const today    = new Date().toISOString().split('T')[0];
+    const tasks    = taskService.getByDate(today);
     const shopping = shoppingService.getAll();
-    const context = buildContext(widgetConfig, tasks, shopping);
+    const context  = buildContext(widgetConfig, tasks, shopping);
 
-    // SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
 
-    // Demo mode when no API key
-    if (!client) {
-      const demo = `Bonjour ! Je suis Walle 🤖 En ce moment je tourne en mode démo. Voici ce que je sais : ${context}. Configure une clé ANTHROPIC_API_KEY pour que je puisse vraiment te répondre !`;
+    if (!openai) {
+      const demo = `Bonjour ! Je suis Walle 🤖 En ce moment je tourne en mode démo. Voici ce que je sais : ${context}. Configure une clé OPENAI_API_KEY pour que je puisse vraiment te répondre !`;
       res.write(`data: ${JSON.stringify({ text: demo })}\n\n`);
       res.write('data: [DONE]\n\n');
       return res.end();
     }
 
     try {
-      const messages: Array<{ role: 'user' | 'assistant'; content: string }> = [
-        ...history.slice(-10),
-        { role: 'user', content: message },
-      ];
-
       const systemText = context
         ? `${SYSTEM}\n\n## Données actuelles de la maison :\n${context}`
         : SYSTEM;
 
-      const stream = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+      const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
+        { role: 'system', content: systemText },
+        ...history.slice(-10).map(m => ({ role: m.role, content: m.content }) as OpenAI.Chat.ChatCompletionMessageParam),
+        { role: 'user', content: message },
+      ];
+
+      const stream = await openai.chat.completions.create({
+        model: 'gpt-4o-mini',
         max_tokens: 600,
         stream: true,
-        system: [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }],
         messages,
       });
 
-      for await (const event of stream as AsyncIterable<{ type: string; delta?: { type: string; text?: string } }>) {
-        if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta' && event.delta.text) {
-          res.write(`data: ${JSON.stringify({ text: event.delta.text })}\n\n`);
-        }
+      for await (const chunk of stream) {
+        const text = chunk.choices[0]?.delta?.content;
+        if (text) res.write(`data: ${JSON.stringify({ text })}\n\n`);
       }
 
       res.write('data: [DONE]\n\n');
       res.end();
     } catch (err) {
       console.error('Chat error:', err);
-      res.write(`data: ${JSON.stringify({ text: 'Oups, j\'ai eu un petit souci ! Réessaie dans un instant. 🤖' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ text: "Oups, j'ai eu un petit souci ! Réessaie dans un instant. 🤖" })}\n\n`);
       res.write('data: [DONE]\n\n');
       res.end();
     }
