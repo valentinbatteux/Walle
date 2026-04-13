@@ -2,6 +2,7 @@ import { DragControls } from 'framer-motion';
 import { WidgetCard } from './WidgetCard';
 import { BrocanteConfig } from '../../types/widgets';
 import { useBrocante } from '../../hooks/useBrocante';
+import { loadAIConfig } from '../../lib/aiConfig';
 
 const ShopIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -19,7 +20,7 @@ interface Props { config: BrocanteConfig; dragControls: DragControls; isDragging
 export function BrocanteWidget({ config, dragControls, isDragging, onSettingsClick }: Props) {
   const { events, loading, aiPowered } = useBrocante(config.city, config.radiusKm);
 
-  const hasKey = !!localStorage.getItem('walle_openai_key');
+  const hasKey = !!loadAIConfig().apiKey;
 
   return (
     <WidgetCard
@@ -32,7 +33,7 @@ export function BrocanteWidget({ config, dragControls, isDragging, onSettingsCli
     >
       {!hasKey ? (
         <p style={{ fontSize: '0.72rem', color: mute, textAlign: 'center', padding: '0.5rem 0', lineHeight: 1.5 }}>
-          Configure ta clé OpenAI<br />
+          Configure ta clé IA<br />
           <span style={{ color: dim, fontSize: '0.65rem' }}>en cliquant sur Walle</span>
         </p>
       ) : loading ? (

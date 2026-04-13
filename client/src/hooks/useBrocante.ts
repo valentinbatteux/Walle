@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { loadAIConfig } from '../lib/aiConfig';
 
 export interface BrocanteEvent {
   name: string;
@@ -8,9 +9,8 @@ export interface BrocanteEvent {
   exhibitors: number;
 }
 
-const KEY_STORAGE     = 'walle_openai_key';
-const CACHE_STORAGE   = 'walle_brocante_cache';
-const CACHE_HOURS     = 20;
+const CACHE_STORAGE = 'walle_brocante_cache';
+const CACHE_HOURS   = 20;
 
 interface CacheEntry { events: BrocanteEvent[]; city: string; date: string; ts: number; }
 
@@ -33,15 +33,15 @@ function saveCache(city: string, dateKey: string, events: BrocanteEvent[]) {
 }
 
 export function useBrocante(city: string, radiusKm: number) {
-  const [events, setEvents]   = useState<BrocanteEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [events, setEvents]       = useState<BrocanteEvent[]>([]);
+  const [loading, setLoading]     = useState(true);
   const [aiPowered, setAiPowered] = useState(false);
 
   useEffect(() => {
     if (!city.trim()) { setLoading(false); return; }
     let cancelled = false;
 
-    const apiKey  = localStorage.getItem(KEY_STORAGE) ?? '';
+    const { provider, apiKey, model } = loadAIConfig();
     const today   = new Date();
     const dateKey = today.toISOString().split('T')[0]; // YYYY-MM-DD
 
@@ -62,11 +62,11 @@ export function useBrocante(city: string, radiusKm: number) {
 
     setLoading(true);
 
-    fetch('https://api.openai.com/v1/chat/completions', {
+    fetch(provider.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model,
         max_tokens: 500,
         response_format: { type: 'json_object' },
         messages: [{

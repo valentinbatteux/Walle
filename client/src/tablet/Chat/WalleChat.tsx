@@ -1,11 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetMap } from '../../types/widgets';
-
-// ── OpenAI key persisted in localStorage ────────────────────────────────────
-const KEY_STORAGE = 'walle_openai_key';
-const loadKey  = () => localStorage.getItem(KEY_STORAGE) ?? '';
-const saveKey  = (k: string) => localStorage.setItem(KEY_STORAGE, k);
+import { AI_PROVIDERS, AIConfig, isKeyValid, loadAIConfig, saveAIConfig, clearAIConfig } from '../../lib/aiConfig';
 
 // ── Build system prompt from widget config (no server needed) ────────────────
 function buildSystemPrompt(widgetConfig: WidgetMap): string {
@@ -49,8 +45,10 @@ interface Props {
 }
 
 export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStartVoice = false }: Props) {
-  const [apiKey, setApiKeyState]    = useState(loadKey);
+  const [cfg, setCfg]               = useState<AIConfig>(() => loadAIConfig());
   const [keyInput, setKeyInput]     = useState('');
+  const [selProvider, setSelProvider] = useState(() => loadAIConfig().provider.id);
+  const [selModel, setSelModel]     = useState(() => loadAIConfig().model);
   const [messages, setMessages]     = useState<ChatMessage[]>([]);
   const [input, setInput]           = useState('');
   const [streaming, setStreaming]   = useState(false);
@@ -71,8 +69,8 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
   }, [messages, streamText]);
 
   useEffect(() => {
-    if (isOpen && apiKey) setTimeout(() => inputRef.current?.focus(), 350);
-  }, [isOpen, apiKey]);
+    if (isOpen && cfg.apiKey) setTimeout(() => inputRef.current?.focus(), 350);
+  }, [isOpen, cfg.apiKey]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -86,10 +84,10 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
   // Auto-start voice when chat opens (if key is set and browser supports it)
   const toggleVoiceRef = useRef<() => void>(() => {});
   useEffect(() => {
-    if (!isOpen || !autoStartVoice || !apiKey) return;
+    if (!isOpen || !autoStartVoice || !cfg.apiKey) return;
     const timer = setTimeout(() => toggleVoiceRef.current(), 700);
     return () => clearTimeout(timer);
-  }, [isOpen, autoStartVoice, apiKey]);
+  }, [isOpen, autoStartVoice, cfg.apiKey]);
 
   // ── TTS ──────────────────────────────────────────────────────────────────────
   const speak = useCallback((text: string) => {
@@ -115,23 +113,23 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
     else window.speechSynthesis.addEventListener('voiceschanged', go, { once: true });
   }, []);
 
-  // ── Send message (direct OpenAI call) ────────────────────────────────────────
+  // ── Send message ─────────────────────────────────────────────────────────────
   const sendText = useCallback(async (text: string) => {
-    if (!text.trim() || streamingRef.current || !apiKey) return;
+    if (!text.trim() || streamingRef.current || !cfg.apiKey) return;
 
     setMessages(prev => [...prev, { role: 'user', content: text }]);
     setStreaming(true);
     setStreamText('');
 
     try {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetch(cfg.provider.url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${cfg.apiKey}`,
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: cfg.model,
           max_tokens: 600,
           stream: true,
           messages: [
@@ -186,7 +184,7 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
     } finally {
       setStreaming(false);
     }
-  }, [apiKey, messages, widgetConfig, speak]);
+  }, [cfg, messages, widgetConfig, speak]);
 
   const handleSend = useCallback(() => {
     const text = input.trim();
@@ -221,12 +219,21 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
   // Keep ref in sync so auto-start effect always calls the latest version
   useEffect(() => { toggleVoiceRef.current = toggleVoice; }, [toggleVoice]);
 
-  // ── Save key ──────────────────────────────────────────────────────────────────
+  // ── Save config ───────────────────────────────────────────────────────────────
+  const provider = AI_PROVIDERS.find(p => p.id === selProvider) ?? AI_PROVIDERS[0];
+
+  const handleProviderChange = (pid: string) => {
+    setSelProvider(pid);
+    const p = AI_PROVIDERS.find(pr => pr.id === pid) ?? AI_PROVIDERS[0];
+    setSelModel(p.models[0]);
+    setKeyInput('');
+  };
+
   const confirmKey = () => {
     const k = keyInput.trim();
-    if (!k.startsWith('sk-')) return;
-    saveKey(k);
-    setApiKeyState(k);
+    if (!isKeyValid(provider, k)) return;
+    saveAIConfig(selProvider, k, selModel);
+    setCfg(loadAIConfig());
     setKeyInput('');
   };
 
@@ -268,13 +275,18 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
                 {speaking ? 'Walle parle…' : 'Walle'}
               </span>
               <div style={{ flex: 1 }} />
-              {/* Change API key */}
-              {apiKey && (
+              {/* Provider badge + change */}
+              {cfg.apiKey && (
                 <button
-                  onClick={() => { saveKey(''); setApiKeyState(''); }}
-                  title="Changer la clé API"
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)', fontSize: 12, padding: '2px 6px' }}
-                >🔑</button>
+                  onClick={() => {
+                    setSelProvider(cfg.provider.id);
+                    setSelModel(cfg.model);
+                    clearAIConfig();
+                    setCfg(loadAIConfig());
+                  }}
+                  title={`${cfg.provider.name} · ${cfg.model} — Changer`}
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, cursor: 'pointer', color: 'rgba(255,255,255,0.35)', fontSize: 10, padding: '2px 8px', fontFamily: 'inherit' }}
+                >{cfg.provider.name} · {cfg.model.split('/').pop()}</button>
               )}
               <button onClick={onClose}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.28)', fontSize: 16, padding: '2px 6px', lineHeight: 1 }}
@@ -283,40 +295,74 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
             </div>
 
             {/* ── Saisie de la clé API si absente ── */}
-            {!apiKey ? (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 28, gap: 16 }}>
-                <span style={{ fontSize: 32 }}>🔑</span>
-                <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.6)', fontSize: 13, lineHeight: 1.6, margin: 0 }}>
-                  Pour parler à Walle, entre ta clé<br />
-                  <strong style={{ color: 'rgba(167,139,250,0.9)' }}>OpenAI API key</strong><br />
-                  <span style={{ fontSize: 11, opacity: 0.5 }}>Elle est sauvegardée localement sur ta tablette.</span>
-                </p>
-                <input
-                  autoFocus
-                  type="password"
-                  value={keyInput}
-                  onChange={e => setKeyInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && confirmKey()}
-                  placeholder="sk-..."
-                  style={{
-                    width: '100%', padding: '12px 16px', borderRadius: 12,
-                    border: '1px solid rgba(167,139,250,0.3)',
-                    background: 'rgba(255,255,255,0.05)',
-                    color: 'rgba(255,255,255,0.88)', fontSize: 14, outline: 'none', fontFamily: 'monospace',
-                  }}
-                />
+            {!cfg.apiKey ? (
+              <div style={{ flex: 1, overflowY: 'auto', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 14, scrollbarWidth: 'none' }}>
+
+                {/* Provider tabs */}
+                <div>
+                  <p style={{ margin: '0 0 7px', fontSize: 10, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>Fournisseur IA</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                    {AI_PROVIDERS.map(p => (
+                      <button key={p.id} onClick={() => handleProviderChange(p.id)} style={{
+                        padding: '8px 4px', borderRadius: 10, fontSize: 12, fontWeight: 500, fontFamily: 'inherit',
+                        border: selProvider === p.id ? '1px solid rgba(167,139,250,0.55)' : '1px solid rgba(255,255,255,0.09)',
+                        background: selProvider === p.id ? 'rgba(167,139,250,0.18)' : 'rgba(255,255,255,0.04)',
+                        color: selProvider === p.id ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.4)',
+                        cursor: 'pointer', transition: 'all 0.15s',
+                      }}>{p.name}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Model select */}
+                <div>
+                  <p style={{ margin: '0 0 7px', fontSize: 10, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>Modèle</p>
+                  <select value={selModel} onChange={e => setSelModel(e.target.value)} style={{
+                    width: '100%', padding: '10px 12px', borderRadius: 10,
+                    border: '1px solid rgba(167,139,250,0.25)',
+                    background: 'rgba(20,12,40,0.9)',
+                    color: 'rgba(255,255,255,0.85)', fontSize: 13, outline: 'none',
+                    fontFamily: 'inherit', cursor: 'pointer',
+                  }}>
+                    {provider.models.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
+
+                {/* API Key input */}
+                <div>
+                  <p style={{ margin: '0 0 7px', fontSize: 10, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>Clé API</p>
+                  <input
+                    autoFocus
+                    type="password"
+                    value={keyInput}
+                    onChange={e => setKeyInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && confirmKey()}
+                    placeholder={provider.keyPlaceholder}
+                    style={{
+                      width: '100%', padding: '11px 14px', borderRadius: 10, boxSizing: 'border-box',
+                      border: '1px solid rgba(167,139,250,0.3)',
+                      background: 'rgba(255,255,255,0.05)',
+                      color: 'rgba(255,255,255,0.88)', fontSize: 13, outline: 'none', fontFamily: 'monospace',
+                    }}
+                  />
+                </div>
+
                 <motion.button
                   onClick={confirmKey}
-                  disabled={!keyInput.startsWith('sk-')}
+                  disabled={!isKeyValid(provider, keyInput.trim())}
                   whileTap={{ scale: 0.95 }}
                   style={{
-                    padding: '10px 28px', borderRadius: 12, border: 'none', cursor: keyInput.startsWith('sk-') ? 'pointer' : 'default',
-                    background: keyInput.startsWith('sk-') ? 'rgba(167,139,250,0.85)' : 'rgba(255,255,255,0.08)',
-                    color: 'white', fontSize: 14, fontWeight: 500, fontFamily: 'inherit',
+                    padding: '11px 0', borderRadius: 11, border: 'none', width: '100%',
+                    cursor: isKeyValid(provider, keyInput.trim()) ? 'pointer' : 'default',
+                    background: isKeyValid(provider, keyInput.trim()) ? 'rgba(167,139,250,0.85)' : 'rgba(255,255,255,0.08)',
+                    color: 'white', fontSize: 14, fontWeight: 600, fontFamily: 'inherit',
                   }}
-                >
-                  Valider
-                </motion.button>
+                >Valider</motion.button>
+
+                <p style={{ margin: 0, fontSize: 10, color: 'rgba(255,255,255,0.2)', textAlign: 'center', lineHeight: 1.6 }}>
+                  Clé stockée localement · jamais partagée<br />
+                  <span style={{ color: 'rgba(167,139,250,0.4)' }}>{provider.docsUrl}</span>
+                </p>
               </div>
             ) : (
               /* ── Messages ── */
@@ -366,7 +412,7 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
           </motion.div>
 
           {/* ── Barre de saisie (masquée si pas de clé) ──────────────────── */}
-          {apiKey && (
+          {cfg.apiKey && (
             <motion.div
               key="input"
               initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 14 }}
