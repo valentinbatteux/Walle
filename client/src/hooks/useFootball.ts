@@ -73,6 +73,16 @@ async function fetchLeague(leagueId: string): Promise<FootballMatch[]> {
 const CACHE = new Map<string, { data: FootballMatch[]; ts: number }>();
 const TTL   = 15 * 60_000; // 15 min
 
+/** Read all cached matches for the given teams (populated when the widget is visible). */
+export function getLastMatches(teams: string[]): FootballMatch[] {
+  if (!teams.length) return [];
+  const all = Array.from(CACHE.values()).flatMap(e => e.data);
+  return all
+    .filter(m => teamMatches(m.home, teams) || teamMatches(m.away, teams))
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .slice(0, 8);
+}
+
 export function useFootball(teams: string[]) {
   const [matches, setMatches] = useState<FootballMatch[]>([]);
   const [loading, setLoading] = useState(true);

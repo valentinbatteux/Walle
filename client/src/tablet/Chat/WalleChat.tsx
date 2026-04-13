@@ -2,29 +2,15 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetMap } from '../../types/widgets';
 import { AI_PROVIDERS, AIConfig, isKeyValid, loadAIConfig, saveAIConfig, clearAIConfig } from '../../lib/aiConfig';
+import { buildWidgetContext } from '../../lib/buildWidgetContext';
 
-// ── Build system prompt from widget config (no server needed) ────────────────
-function buildSystemPrompt(widgetConfig: WidgetMap): string {
-  const ctx: string[] = [];
-  const w = widgetConfig.weather;
-  const b = widgetConfig.brocante;
-  const f = widgetConfig.football;
-  if (w?.id === 'weather')  ctx.push(`Météo configurée pour ${w.config.city} (${w.config.unit})`);
-  if (b?.id === 'brocante') ctx.push(`Brocantes surveillées autour de ${b.config.city}, rayon ${b.config.radiusKm} km`);
-  if (f?.id === 'football') ctx.push(`Équipes de foot suivies : ${f.config.teams.join(', ')}`);
-
-  const context = ctx.length
-    ? `\n\n## Configuration de la maison :\n${ctx.join('\n')}`
-    : '';
-
-  return `Tu es Walle, l'assistant IA personnel et attachant d'un tableau de bord domestique installé sur un mur. Tu es curieux, bienveillant, légèrement espiègle, et tu parles toujours en français avec chaleur et naturel.
+const SYSTEM_BASE = `Tu es Walle, l'assistant IA personnel et attachant d'un tableau de bord domestique installé sur un mur. Tu es curieux, bienveillant, légèrement espiègle, et tu parles toujours en français avec chaleur et naturel.
 
 Règles :
 - Réponds toujours en français
 - Sois concis et naturel (2-4 phrases sauf si la question est complexe)
-- Sois utile, précis, et agréable
-- Utilise le contexte de la maison fourni${context}`;
-}
+- Utilise les données en temps réel de la maison fournies ci-dessous pour répondre précisément
+- Si une donnée est absente, dis-le honnêtement`;
 
 interface ChatMessage { role: 'user' | 'assistant'; content: string; }
 
@@ -152,6 +138,10 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
     setStreamText('');
 
     try {
+      // Fetch live widget data to inject as context
+      const widgetData = await buildWidgetContext(widgetConfig);
+      const systemPrompt = `${SYSTEM_BASE}\n\n## État actuel de ta maison :\n${widgetData}`;
+
       const res = await fetch(cfg.provider.url, {
         method: 'POST',
         headers: {
@@ -163,7 +153,7 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
           max_tokens: 600,
           stream: true,
           messages: [
-            { role: 'system', content: buildSystemPrompt(widgetConfig) },
+            { role: 'system', content: systemPrompt },
             ...messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
             { role: 'user', content: text },
           ],
@@ -377,7 +367,7 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
                 {/* Provider tabs */}
                 <div>
                   <p style={{ margin: '0 0 7px', fontSize: 10, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>Fournisseur IA</p>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 5 }}>
                     {AI_PROVIDERS.map(p => (
                       <button key={p.id} onClick={() => handleProviderChange(p.id)} style={{
                         padding: '8px 4px', borderRadius: 10, fontSize: 12, fontWeight: 500, fontFamily: 'inherit',

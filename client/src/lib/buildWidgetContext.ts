@@ -1,0 +1,170 @@
+/**
+ * Builds a rich natural-language context string from live widget data.
+ * Called before each AI message so Walle knows the current state of the home.
+ */
+import { WidgetMap } from '../types/widgets';
+import { getLastMatches } from '../hooks/useFootball';
+import type { BrocanteEvent } from '../hooks/useBrocante';
+
+// ── WMO weather code → French ─────────────────────────────────────────────────
+const WMO: Record<number, string> = {
+  0: 'ciel dégagé', 1: 'principalement dégagé', 2: 'partiellement nuageux', 3: 'couvert',
+  45: 'brouillard', 48: 'brouillard givrant',
+  51: 'bruine légère', 53: 'bruine', 55: 'bruine dense',
+  61: 'pluie légère', 63: 'pluie', 65: 'forte pluie',
+  71: 'neige légère', 73: 'neige', 75: 'forte neige',
+  80: 'averses légères', 81: 'averses', 82: 'averses violentes',
+  95: 'orage', 99: 'orage avec grêle',
+};
+function wmoDesc(code: number) {
+  return WMO[code] ?? WMO[Math.floor(code / 10) * 10] ?? 'variable';
+}
+
+// ── Weather ───────────────────────────────────────────────────────────────────
+async function fetchWeatherContext(city: string, unit: 'celsius' | 'fahrenheit'): Promise<string> {
+  try {
+    const geoRes = await fetch(
+      `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=fr&format=json`
+    );
+    const geo = await geoRes.json();
+    if (!geo.results?.length) return '';
+    const { latitude, longitude, name } = geo.results[0];
+
+    const sym = unit === 'fahrenheit' ? '°F' : '°C';
+    const tempParam = unit === 'fahrenheit' ? '&temperature_unit=fahrenheit' : '';
+
+    const wRes = await fetch(
+      `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}` +
+      `&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code` +
+      `&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=5` +
+      tempParam
+    );
+    const w = await wRes.json();
+    const c = w.current;
+
+    const forecast = (w.daily.time as string[]).slice(1, 4).map((d: string, i: number) => {
+      const date = new Date(d + 'T12:00:00');
+      const day = date.toLocaleDateString('fr-FR', { weekday: 'long' });
+      return `${day}: ${Math.round(w.daily.temperature_2m_max[i + 1])}/${Math.round(w.daily.temperature_2m_min[i + 1])}${sym} ${wmoDesc(w.daily.weather_code[i + 1])}`;
+    });
+
+    return [
+      `Météo à ${name} : ${Math.round(c.temperature_2m)}${sym} (ressenti ${Math.round(c.apparent_temperature)}${sym}), ${wmoDesc(c.weather_code)}, humidité ${c.relative_humidity_2m}%, vent ${Math.round(c.wind_speed_10m)} km/h`,
+      `Prévisions : ${forecast.join(' · ')}`,
+    ].join('\n');
+  } catch {
+    return '';
+  }
+}
+
+// ── Brocante ──────────────────────────────────────────────────────────────────
+function getBrocanteContext(city: string, radiusKm: number): string {
+  try {
+    const raw = localStorage.getItem('walle_brocante_cache');
+    if (!raw) return '';
+    const cache = JSON.parse(raw) as { city?: string; events?: BrocanteEvent[] };
+    const events = (cache.events ?? []).filter((e: BrocanteEvent) => e.distanceKm <= radiusKm);
+    if (!events.length) return '';
+    const lines = events.map((e: BrocanteEvent) =>
+      `  • ${e.name} — ${e.date} à ${e.location} (${e.distanceKm} km, ${e.exhibitors} exposants)`
+    );
+    return `Brocantes à venir autour de ${city} :\n${lines.join('\n')}`;
+  } catch {
+    return '';
+  }
+}
+
+// ── Football ──────────────────────────────────────────────────────────────────
+function getFootballContext(teams: string[]): string {
+  const matches = getLastMatches(teams);
+  if (!matches.length) return '';
+
+  const now = new Date();
+  const lines = matches.map(m => {
+    const diffDays = Math.round((m.date.getTime() - now.getTime()) / 86_400_000);
+    const when = m.status === 'live' ? '🔴 En direct'
+      : diffDays === 0 ? `aujourd'hui à ${m.time}`
+      : diffDays === 1 ? `demain à ${m.time}`
+      : diffDays === -1 ? 'hier'
+      : m.date.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' }) + ` à ${m.time}`;
+    const score = m.homeScore !== null ? `${m.homeScore}–${m.awayScore}` : 'vs';
+    return `  • ${m.home} ${score} ${m.away} — ${when} (${m.competition})`;
+  });
+  return `Matchs de foot :\n${lines.join('\n')}`;
+}
+
+// ── Shopping (server-side, best-effort) ───────────────────────────────────────
+async function fetchShoppingContext(): Promise<string> {
+  try {
+    const res = await fetch('/api/shopping', { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) return '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const items: any[] = await res.json();
+    if (!items.length) return '';
+    const pending = items.filter(i => !i.completed);
+    const done    = items.filter(i => i.completed);
+    const lines: string[] = [];
+    if (pending.length) lines.push(`  À acheter : ${pending.map(i => i.name + (i.quantity ? ` (${i.quantity})` : '')).join(', ')}`);
+    if (done.length)    lines.push(`  Déjà fait : ${done.map(i => i.name).join(', ')}`);
+    return `Liste de courses :\n${lines.join('\n')}`;
+  } catch {
+    return '';
+  }
+}
+
+// ── Tasks ─────────────────────────────────────────────────────────────────────
+async function fetchTasksContext(): Promise<string> {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const res   = await fetch(`/api/tasks?date=${today}`, { signal: AbortSignal.timeout(2000) });
+    if (!res.ok) return '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tasks: any[] = await res.json();
+    if (!tasks.length) return "Aucune tâche pour aujourd'hui.";
+    const lines = tasks.map(t => `  ${t.completed ? '✓' : '○'} ${t.title}${t.time ? ` à ${t.time}` : ''}`);
+    return `Tâches d'aujourd'hui :\n${lines.join('\n')}`;
+  } catch {
+    return '';
+  }
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+export async function buildWidgetContext(widgetConfig: WidgetMap): Promise<string> {
+  const today = new Date().toLocaleDateString('fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+  const hour = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+  const sections: string[] = [`Date et heure : ${today} à ${hour}`];
+
+  const w = widgetConfig.weather;
+  const b = widgetConfig.brocante;
+  const f = widgetConfig.football;
+  const s = widgetConfig.shopping;
+  const t = widgetConfig.tasks;
+
+  // Fetch in parallel, each failing independently
+  const [weatherCtx, shoppingCtx, tasksCtx] = await Promise.all([
+    w?.id === 'weather' ? fetchWeatherContext(w.config.city, w.config.unit) : Promise.resolve(''),
+    s?.id === 'shopping' ? fetchShoppingContext() : Promise.resolve(''),
+    t?.id === 'tasks'    ? fetchTasksContext()    : Promise.resolve(''),
+  ]);
+
+  if (weatherCtx)  sections.push(weatherCtx);
+  if (shoppingCtx) sections.push(shoppingCtx);
+  if (tasksCtx)    sections.push(tasksCtx);
+
+  if (b?.id === 'brocante') {
+    const ctx = getBrocanteContext(b.config.city, b.config.radiusKm);
+    if (ctx) sections.push(ctx);
+  }
+
+  if (f?.id === 'football') {
+    const ctx = getFootballContext(f.config.teams);
+    if (ctx) sections.push(ctx);
+    else if (f.config.teams.length)
+      sections.push(`Équipes suivies : ${f.config.teams.join(', ')} (données pas encore chargées)`);
+  }
+
+  return sections.join('\n\n');
+}

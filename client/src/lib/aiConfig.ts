@@ -49,6 +49,15 @@ export const AI_PROVIDERS: AIProvider[] = [
     keyPlaceholder: 'sk-or-...',
     docsUrl: 'https://openrouter.ai/keys',
   },
+  {
+    id: 'gemini',
+    name: 'Gemini',
+    url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+    models: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-2.0-flash-lite'],
+    keyPrefix: 'AIza',
+    keyPlaceholder: 'AIza...',
+    docsUrl: 'https://aistudio.google.com/app/apikey',
+  },
 ];
 
 // ── LocalStorage keys ─────────────────────────────────────────────────────────
