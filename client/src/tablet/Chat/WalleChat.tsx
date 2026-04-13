@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetMap } from '../../types/widgets';
 import { AI_PROVIDERS, AIConfig, isKeyValid, loadAIConfig, saveAIConfig, clearAIConfig } from '../../lib/aiConfig';
-import { buildWidgetContext } from '../../lib/buildWidgetContext';
+import { buildWidgetContext, getLastContextData } from '../../lib/buildWidgetContext';
 
 const SYSTEM_BASE = `Tu es Walle, l'assistant IA personnel et attachant d'un tableau de bord domestique installé sur un mur. Tu es curieux, bienveillant, légèrement espiègle, et tu parles toujours en français avec chaleur et naturel.
 
@@ -13,7 +13,179 @@ Règles :
 - Pour l'actualité, base-toi UNIQUEMENT sur les titres fournis dans le contexte. Ne jamais inventer ou supposer des événements récents. Si un sujet d'actualité n'est pas dans les titres fournis, dis-le clairement : "Je n'ai pas d'info là-dessus pour l'instant."
 - Si une donnée est absente, dis-le honnêtement`;
 
-interface ChatMessage { role: 'user' | 'assistant'; content: string; }
+type WidgetType = 'weather' | 'football' | 'brocante' | 'news';
+interface ChatMessage { role: 'user' | 'assistant'; content: string; widget?: WidgetType; }
+
+// Detect topic from user message to attach matching inline card
+function detectTopic(text: string): WidgetType | undefined {
+  const t = text.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (/meteo|temps qu|temperature|degre|pluie|vent|soleil|nuage|chaud|froid|humidite|prevision|climat/.test(t)) return 'weather';
+  if (/foot|match|score|but |equipe|psg|lyon|om |marseille|ligue|liga|champion|joue|buteur|stade/.test(t)) return 'football';
+  if (/brocante|vide.?grenier|marche aux puces/.test(t)) return 'brocante';
+  if (/actu|actualite|news|journal|nouvelles|titre|article|monde|presse/.test(t)) return 'news';
+  return undefined;
+}
+
+// WMO code → emoji
+function wmoEmoji(code: number): string {
+  if (code === 0) return '☀️';
+  if (code <= 2) return '⛅';
+  if (code === 3) return '☁️';
+  if (code <= 48) return '🌫️';
+  if (code <= 55) return '🌦️';
+  if (code <= 65) return '🌧️';
+  if (code <= 75) return '❄️';
+  if (code <= 82) return '🌦️';
+  return '⛈️';
+}
+
+// ── Inline widget card shown below assistant reply ────────────────────────────
+function InlineWidgetCard({ type }: { type: WidgetType }) {
+  const data = getLastContextData();
+  const cardStyle: React.CSSProperties = {
+    marginTop: 8,
+    borderRadius: 14,
+    background: 'rgba(0,0,0,0.28)',
+    border: '1px solid rgba(255,255,255,0.09)',
+    padding: '10px 13px',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.82)',
+    lineHeight: 1.5,
+  };
+  const labelStyle: React.CSSProperties = {
+    fontSize: 9,
+    fontWeight: 700,
+    letterSpacing: '0.14em',
+    textTransform: 'uppercase',
+    color: 'rgba(167,139,250,0.6)',
+    marginBottom: 6,
+  };
+  const rowStyle: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap',
+  };
+  const chipStyle: React.CSSProperties = {
+    fontSize: 10,
+    background: 'rgba(255,255,255,0.07)',
+    borderRadius: 8,
+    padding: '2px 7px',
+    color: 'rgba(255,255,255,0.5)',
+    whiteSpace: 'nowrap',
+  };
+  const dimStyle: React.CSSProperties = {
+    fontSize: 10.5,
+    color: 'rgba(255,255,255,0.4)',
+  };
+
+  // ── Weather ──────────────────────────────────────────────────────────────────
+  if (type === 'weather') {
+    const w = data.weather;
+    if (!w) return null;
+    return (
+      <div style={cardStyle}>
+        <div style={labelStyle}>☁ Météo · {w.city}</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
+          <span style={{ fontSize: 26, lineHeight: 1 }}>{wmoEmoji(w.code)}</span>
+          <span style={{ fontSize: 22, fontWeight: 300 }}>{w.temp}{w.sym}</span>
+          <span style={dimStyle}>ressenti {w.feels}{w.sym} · {w.desc}</span>
+        </div>
+        <div style={{ ...rowStyle, marginBottom: 8 }}>
+          <span style={chipStyle}>💧 {w.humidity}%</span>
+          <span style={chipStyle}>💨 {w.wind} km/h</span>
+        </div>
+        {w.forecast.length > 0 && (
+          <div style={{ display: 'flex', gap: 6 }}>
+            {w.forecast.map((f, i) => (
+              <div key={i} style={{
+                flex: 1, textAlign: 'center', borderRadius: 10,
+                background: 'rgba(255,255,255,0.05)', padding: '5px 4px',
+              }}>
+                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.35)', marginBottom: 2 }}>{f.day}</div>
+                <div style={{ fontSize: 14 }}>{wmoEmoji(f.code)}</div>
+                <div style={{ fontSize: 10, fontWeight: 500 }}>{f.high}°</div>
+                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>{f.low}°</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Football ─────────────────────────────────────────────────────────────────
+  if (type === 'football') {
+    const matches = data.football;
+    if (!matches?.length) return null;
+    const now = new Date();
+    return (
+      <div style={cardStyle}>
+        <div style={labelStyle}>⚽ Matchs</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {matches.slice(0, 5).map((m, i) => {
+            const diffDays = Math.round((m.date.getTime() - now.getTime()) / 86_400_000);
+            const when = m.status === 'live' ? '🔴 En direct'
+              : diffDays === 0 ? `auj. ${m.time}`
+              : diffDays === 1 ? `dem. ${m.time}`
+              : diffDays === -1 ? 'hier'
+              : m.date.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ` ${m.time}`;
+            const score = m.homeScore !== null ? `${m.homeScore}–${m.awayScore}` : 'vs';
+            return (
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '5px 8px', borderRadius: 8, background: 'rgba(255,255,255,0.04)',
+              }}>
+                <span style={{ fontSize: 11, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {m.home} <b style={{ color: 'rgba(255,255,255,0.5)' }}>{score}</b> {m.away}
+                </span>
+                <span style={{ ...chipStyle, marginLeft: 6 }}>{when}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Brocante ─────────────────────────────────────────────────────────────────
+  if (type === 'brocante') {
+    const events = data.brocante;
+    if (!events?.length) return null;
+    return (
+      <div style={cardStyle}>
+        <div style={labelStyle}>🛍 Brocantes</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+          {events.slice(0, 4).map((e, i) => (
+            <div key={i} style={{ padding: '5px 8px', borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>
+              <div style={{ fontSize: 11, fontWeight: 500, marginBottom: 2 }}>{e.name}</div>
+              <div style={rowStyle}>
+                <span style={chipStyle}>📅 {e.date}</span>
+                <span style={chipStyle}>📍 {e.location} · {e.distanceKm} km</span>
+                <span style={chipStyle}>{e.exhibitors} expo.</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── News ──────────────────────────────────────────────────────────────────────
+  if (type === 'news') {
+    const titles = data.news;
+    if (!titles?.length) return null;
+    return (
+      <div style={cardStyle}>
+        <div style={labelStyle}>📰 À la une · Le Monde</div>
+        <ul style={{ margin: 0, padding: '0 0 0 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {titles.slice(0, 6).map((t, i) => (
+            <li key={i} style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', lineHeight: 1.4 }}>{t}</li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
+
+  return null;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const getSpeechRec = (): (new () => any) | undefined => {
@@ -58,11 +230,12 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
   const [voicePickerOpen, setVoicePickerOpen] = useState(false);
   const [frVoices, setFrVoices]     = useState<SpeechSynthesisVoice[]>([]);
 
-  const scrollRef      = useRef<HTMLDivElement>(null);
-  const inputRef       = useRef<HTMLInputElement>(null);
+  const scrollRef         = useRef<HTMLDivElement>(null);
+  const inputRef          = useRef<HTMLInputElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
-  const streamingRef   = useRef(false);
+  const recognitionRef    = useRef<any>(null);
+  const streamingRef      = useRef(false);
+  const continuousModeRef = useRef(false);
 
   useEffect(() => { streamingRef.current = streaming; }, [streaming]);
 
@@ -74,8 +247,14 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
     if (isOpen && cfg.apiKey) setTimeout(() => inputRef.current?.focus(), 350);
   }, [isOpen, cfg.apiKey]);
 
+  // Sync continuous mode: active when chat is open with a valid key
+  useEffect(() => {
+    continuousModeRef.current = isOpen && !!cfg.apiKey;
+  }, [isOpen, cfg.apiKey]);
+
   useEffect(() => {
     if (!isOpen) {
+      continuousModeRef.current = false;
       recognitionRef.current?.stop();
       window.speechSynthesis?.cancel();
       setListening(false);
@@ -121,7 +300,13 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
         ?? pickFemFrVoice(voices);
       if (voice) utterance.voice = voice;
       utterance.onstart = () => setSpeaking(true);
-      utterance.onend   = () => setSpeaking(false);
+      utterance.onend   = () => {
+        setSpeaking(false);
+        // Continuous conversation: auto-restart mic after Walle finishes speaking
+        if (continuousModeRef.current && !streamingRef.current) {
+          setTimeout(() => toggleVoiceRef.current(), 600);
+        }
+      };
       utterance.onerror = () => setSpeaking(false);
       window.speechSynthesis.speak(utterance);
     };
@@ -134,6 +319,7 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
   const sendText = useCallback(async (text: string) => {
     if (!text.trim() || streamingRef.current || !cfg.apiKey) return;
 
+    const topic = detectTopic(text);
     setMessages(prev => [...prev, { role: 'user', content: text }]);
     setStreaming(true);
     setStreamText('');
@@ -206,7 +392,7 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
       }
 
       if (accumulated) {
-        setMessages(prev => [...prev, { role: 'assistant', content: accumulated }]);
+        setMessages(prev => [...prev, { role: 'assistant', content: accumulated, widget: topic }]);
         speak(accumulated);
       }
       setStreamText('');
@@ -455,7 +641,7 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
 
                 {messages.map((msg, i) => (
                   <motion.div key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-                    style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '88%' }}>
+                    style={{ alignSelf: msg.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '92%' }}>
                     <div style={{
                       padding: '10px 14px',
                       borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
@@ -463,6 +649,7 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
                       border: msg.role === 'user' ? '1px solid rgba(167,139,250,0.3)' : '1px solid rgba(255,255,255,0.07)',
                       color: 'rgba(255,255,255,0.88)', fontSize: 14, lineHeight: 1.55, whiteSpace: 'pre-wrap',
                     }}>{msg.content}</div>
+                    {msg.role === 'assistant' && msg.widget && <InlineWidgetCard type={msg.widget} />}
                   </motion.div>
                 ))}
 

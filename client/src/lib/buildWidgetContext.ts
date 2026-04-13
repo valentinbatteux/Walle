@@ -1,10 +1,25 @@
 /**
- * Builds a rich natural-language context string from live widget data.
- * Called before each AI message so Walle knows the current state of the home.
+ * Builds a rich natural-language context string from live widget data,
+ * and caches parsed data for inline widget cards in the chat.
  */
 import { WidgetMap } from '../types/widgets';
-import { getLastMatches } from '../hooks/useFootball';
+import { getLastMatches, FootballMatch } from '../hooks/useFootball';
 import type { BrocanteEvent } from '../hooks/useBrocante';
+
+// ── Exported cache for inline chat cards ──────────────────────────────────────
+export interface LastWeatherData {
+  city: string; temp: number; feels: number;
+  desc: string; code: number; humidity: number; wind: number; sym: string;
+  forecast: Array<{ day: string; code: number; high: number; low: number }>;
+}
+export interface LastContextData {
+  weather?: LastWeatherData;
+  football?: FootballMatch[];
+  brocante?: BrocanteEvent[];
+  news?: string[];
+}
+let lastData: LastContextData = {};
+export function getLastContextData(): LastContextData { return lastData; }
 
 // ── WMO weather code → French ─────────────────────────────────────────────────
 const WMO: Record<number, string> = {
@@ -42,15 +57,32 @@ async function fetchWeatherContext(city: string, unit: 'celsius' | 'fahrenheit')
     const w = await wRes.json();
     const c = w.current;
 
-    const forecast = (w.daily.time as string[]).slice(1, 4).map((d: string, i: number) => {
-      const date = new Date(d + 'T12:00:00');
-      const day = date.toLocaleDateString('fr-FR', { weekday: 'long' });
-      return `${day}: ${Math.round(w.daily.temperature_2m_max[i + 1])}/${Math.round(w.daily.temperature_2m_min[i + 1])}${sym} ${wmoDesc(w.daily.weather_code[i + 1])}`;
-    });
+    const forecastDays = (w.daily.time as string[]).slice(1, 4).map((d: string, i: number) => ({
+      day: new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short' }),
+      code: w.daily.weather_code[i + 1] as number,
+      high: Math.round(w.daily.temperature_2m_max[i + 1]),
+      low:  Math.round(w.daily.temperature_2m_min[i + 1]),
+    }));
+
+    lastData.weather = {
+      city: name,
+      temp:     Math.round(c.temperature_2m),
+      feels:    Math.round(c.apparent_temperature),
+      desc:     wmoDesc(c.weather_code),
+      code:     c.weather_code,
+      humidity: c.relative_humidity_2m,
+      wind:     Math.round(c.wind_speed_10m),
+      sym,
+      forecast: forecastDays,
+    };
+
+    const forecastText = forecastDays.map(f =>
+      `${f.day}: ${f.high}/${f.low}${sym} ${wmoDesc(f.code)}`
+    );
 
     return [
-      `Météo à ${name} : ${Math.round(c.temperature_2m)}${sym} (ressenti ${Math.round(c.apparent_temperature)}${sym}), ${wmoDesc(c.weather_code)}, humidité ${c.relative_humidity_2m}%, vent ${Math.round(c.wind_speed_10m)} km/h`,
-      `Prévisions : ${forecast.join(' · ')}`,
+      `Météo à ${name} : ${lastData.weather.temp}${sym} (ressenti ${lastData.weather.feels}${sym}), ${lastData.weather.desc}, humidité ${lastData.weather.humidity}%, vent ${lastData.weather.wind} km/h`,
+      `Prévisions : ${forecastText.join(' · ')}`,
     ].join('\n');
   } catch {
     return '';
@@ -62,9 +94,10 @@ function getBrocanteContext(city: string, radiusKm: number): string {
   try {
     const raw = localStorage.getItem('walle_brocante_cache');
     if (!raw) return '';
-    const cache = JSON.parse(raw) as { city?: string; events?: BrocanteEvent[] };
+    const cache = JSON.parse(raw) as { events?: BrocanteEvent[] };
     const events = (cache.events ?? []).filter((e: BrocanteEvent) => e.distanceKm <= radiusKm);
     if (!events.length) return '';
+    lastData.brocante = events;
     const lines = events.map((e: BrocanteEvent) =>
       `  • ${e.name} — ${e.date} à ${e.location} (${e.distanceKm} km, ${e.exhibitors} exposants)`
     );
@@ -78,6 +111,7 @@ function getBrocanteContext(city: string, radiusKm: number): string {
 function getFootballContext(teams: string[]): string {
   const matches = getLastMatches(teams);
   if (!matches.length) return '';
+  lastData.football = matches;
 
   const now = new Date();
   const lines = matches.map(m => {
@@ -106,8 +140,9 @@ async function fetchNewsContext(): Promise<string> {
     const data: any = await res.json();
     if (data.status !== 'ok' || !data.items?.length) return '';
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const lines = (data.items as any[]).map((item: any) => `  • ${item.title}`);
-    return `Actualités du moment (Le Monde) — utilise UNIQUEMENT ces titres pour répondre sur l'actu :\n${lines.join('\n')}`;
+    const titles = (data.items as any[]).map((item: any) => item.title as string);
+    lastData.news = titles;
+    return `Actualités du moment (Le Monde) — utilise UNIQUEMENT ces titres pour répondre sur l'actu :\n${titles.map(t => `  • ${t}`).join('\n')}`;
   } catch {
     return '';
   }
@@ -163,7 +198,6 @@ export async function buildWidgetContext(widgetConfig: WidgetMap): Promise<strin
   const s = widgetConfig.shopping;
   const t = widgetConfig.tasks;
 
-  // Fetch in parallel, each failing independently
   const [weatherCtx, newsCtx, shoppingCtx, tasksCtx] = await Promise.all([
     w?.id === 'weather' ? fetchWeatherContext(w.config.city, w.config.unit) : Promise.resolve(''),
     fetchNewsContext(),

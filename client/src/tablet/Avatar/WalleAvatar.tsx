@@ -1,6 +1,5 @@
 import { motion, useMotionValue, useSpring, AnimatePresence } from 'framer-motion';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useWalleSounds } from '../../hooks/useWalleSounds';
 
 const PARTICLES = [
   { angle: 42,  r: 1.42, size: 2.5, delay: 0,   dur: 3.2 },
@@ -36,8 +35,6 @@ export function WalleAvatar({ size = 170, onClick, chatMode = false }: Props) {
   const eyeX = useSpring(eyeXMv, { stiffness: 55, damping: 16 });
   const eyeY = useSpring(eyeYMv, { stiffness: 55, damping: 16 });
 
-  const { playChirp, playGreeting, playBlip, playQuestion } = useWalleSounds();
-  const greetedRef    = useRef(false);
   const behaviourRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const rafRef        = useRef<number>(0);
@@ -136,12 +133,11 @@ export function WalleAvatar({ size = 170, onClick, chatMode = false }: Props) {
     if (sleeping) {
       setSleeping(false);
       setExpr('idle');
-      playBlip();
       eyeYMv.set(-size * 0.015);
       setTimeout(() => eyeYMv.set(0), 800);
     }
     sleepTimerRef.current = setTimeout(() => setSleeping(true), SLEEP_AFTER);
-  }, [sleeping, playBlip, eyeYMv, size]);
+  }, [sleeping, eyeYMv, size]);
 
   useEffect(() => {
     const wake = () => resetSleepTimer();
@@ -167,7 +163,6 @@ export function WalleAvatar({ size = 170, onClick, chatMode = false }: Props) {
           eyeXMv.set((Math.random() - 0.5) * size * 0.015);
           setTimeout(() => eyeXMv.set(0), 1200);
         }
-        if (Math.random() < 0.2) playBlip();
         scheduleBehaviour();
         return;
       }
@@ -176,7 +171,7 @@ export function WalleAvatar({ size = 170, onClick, chatMode = false }: Props) {
       if (roll < 0.20) {
         const dir = Math.random() > 0.5 ? 1 : -1;
         eyeXMv.set(dir * size * 0.030);
-        setExpr('curious'); playQuestion();
+        setExpr('curious');
         setTimeout(() => { eyeXMv.set(0); setExpr('idle'); }, 2200);
       } else if (roll < 0.35) {
         eyeXMv.set(-size * 0.02); eyeYMv.set(-size * 0.022);
@@ -191,20 +186,19 @@ export function WalleAvatar({ size = 170, onClick, chatMode = false }: Props) {
         setTimeout(() => setExpr('blink'), 500);
         setTimeout(() => setExpr('idle'), 750);
       } else if (roll < 0.72) {
-        setExpr('happy'); playBlip();
+        setExpr('happy');
         setTimeout(() => setExpr('idle'), 900);
       } else if (roll < 0.82) {
         setExpr('wide');
         setTimeout(() => setExpr('idle'), 1200);
       } else {
-        playBlip();
         eyeXMv.set((Math.random() - 0.5) * size * 0.014);
         setTimeout(() => eyeXMv.set(0), 700);
       }
 
       scheduleBehaviour();
     }, delay);
-  }, [sleeping, size, eyeXMv, eyeYMv, playBlip, playQuestion]);
+  }, [sleeping, size, eyeXMv, eyeYMv]);
 
   useEffect(() => {
     scheduleBehaviour();
@@ -214,13 +208,11 @@ export function WalleAvatar({ size = 170, onClick, chatMode = false }: Props) {
   // ── Click handler ─────────────────────────────────────────────────────────────
   const handleClick = useCallback(() => {
     resetSleepTimer();
-    if (!greetedRef.current) { greetedRef.current = true; playGreeting(); }
-    else { playChirp(); }
     setExpr('happy');
     eyeYMv.set(-size * 0.018);
     setTimeout(() => { setExpr('idle'); eyeYMv.set(0); }, 800);
     onClick?.();
-  }, [resetSleepTimer, playGreeting, playChirp, eyeYMv, size, onClick]);
+  }, [resetSleepTimer, eyeYMv, size, onClick]);
 
   // ── Eye shape per expression ──────────────────────────────────────────────────
   const eyeScale = (() => {
