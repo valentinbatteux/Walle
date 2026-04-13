@@ -93,6 +93,26 @@ function getFootballContext(teams: string[]): string {
   return `Matchs de foot :\n${lines.join('\n')}`;
 }
 
+// ── Actualités (RSS Le Monde via rss2json CORS proxy) ────────────────────────
+async function fetchNewsContext(): Promise<string> {
+  try {
+    const rssUrl = 'https://www.lemonde.fr/rss/une.xml';
+    const res = await fetch(
+      `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(rssUrl)}&count=8`,
+      { signal: AbortSignal.timeout(4000) }
+    );
+    if (!res.ok) return '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data: any = await res.json();
+    if (data.status !== 'ok' || !data.items?.length) return '';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const lines = (data.items as any[]).map((item: any) => `  • ${item.title}`);
+    return `Actualités du moment (Le Monde) — utilise UNIQUEMENT ces titres pour répondre sur l'actu :\n${lines.join('\n')}`;
+  } catch {
+    return '';
+  }
+}
+
 // ── Shopping (server-side, best-effort) ───────────────────────────────────────
 async function fetchShoppingContext(): Promise<string> {
   try {
@@ -144,13 +164,15 @@ export async function buildWidgetContext(widgetConfig: WidgetMap): Promise<strin
   const t = widgetConfig.tasks;
 
   // Fetch in parallel, each failing independently
-  const [weatherCtx, shoppingCtx, tasksCtx] = await Promise.all([
+  const [weatherCtx, newsCtx, shoppingCtx, tasksCtx] = await Promise.all([
     w?.id === 'weather' ? fetchWeatherContext(w.config.city, w.config.unit) : Promise.resolve(''),
+    fetchNewsContext(),
     s?.id === 'shopping' ? fetchShoppingContext() : Promise.resolve(''),
     t?.id === 'tasks'    ? fetchTasksContext()    : Promise.resolve(''),
   ]);
 
   if (weatherCtx)  sections.push(weatherCtx);
+  if (newsCtx)     sections.push(newsCtx);
   if (shoppingCtx) sections.push(shoppingCtx);
   if (tasksCtx)    sections.push(tasksCtx);
 
