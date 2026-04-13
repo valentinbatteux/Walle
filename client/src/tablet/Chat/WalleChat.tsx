@@ -142,27 +142,39 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
       const widgetData = await buildWidgetContext(widgetConfig);
       const systemPrompt = `${SYSTEM_BASE}\n\n## État actuel de ta maison :\n${widgetData}`;
 
-      const res = await fetch(cfg.provider.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${cfg.apiKey}`,
-        },
-        body: JSON.stringify({
-          model: cfg.model,
-          max_tokens: 600,
-          stream: true,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: text },
-          ],
-        }),
+      const reqHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${cfg.apiKey}`,
+      };
+      const reqBody = JSON.stringify({
+        model: cfg.model,
+        max_tokens: 600,
+        stream: true,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...messages.slice(-10).map(m => ({ role: m.role, content: m.content })),
+          { role: 'user', content: text },
+        ],
       });
 
+      let res = await fetch(cfg.provider.url, { method: 'POST', headers: reqHeaders, body: reqBody });
+
+      // Auto-retry once on rate limit (free tiers: Gemini 2 RPM, etc.)
+      if (res.status === 429) {
+        setStreamText('⏳ Limite de requêtes atteinte, je réessaie dans 5 s…');
+        await new Promise(r => setTimeout(r, 5000));
+        setStreamText('');
+        res = await fetch(cfg.provider.url, { method: 'POST', headers: reqHeaders, body: reqBody });
+      }
+
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error((err as { error?: { message?: string } }).error?.message ?? `HTTP ${res.status}`);
+        const errBody = await res.json().catch(() => ({}));
+        const apiMsg  = (errBody as { error?: { message?: string } }).error?.message;
+        if (res.status === 429) throw new Error('Trop de requêtes — attends encore quelques secondes ⏳');
+        if (res.status === 401) throw new Error('Clé API invalide — vérifie ta clé 🔑');
+        if (res.status === 403) throw new Error('Accès refusé — quota épuisé ou clé incorrecte 🔑');
+        if (res.status >= 500) throw new Error('Erreur du service IA — réessaie dans un moment 🔄');
+        throw new Error(apiMsg ?? `Erreur ${res.status}`);
       }
 
       if (!res.body) throw new Error('No stream body');
