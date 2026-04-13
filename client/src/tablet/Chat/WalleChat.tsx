@@ -45,9 +45,10 @@ interface Props {
   onClose: () => void;
   widgetConfig: WidgetMap;
   avatarSize: number;
+  autoStartVoice?: boolean;
 }
 
-export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize }: Props) {
+export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStartVoice = false }: Props) {
   const [apiKey, setApiKeyState]    = useState(loadKey);
   const [keyInput, setKeyInput]     = useState('');
   const [messages, setMessages]     = useState<ChatMessage[]>([]);
@@ -81,6 +82,14 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize }: Props) 
       setSpeaking(false);
     }
   }, [isOpen]);
+
+  // Auto-start voice when chat opens (if key is set and browser supports it)
+  const toggleVoiceRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    if (!isOpen || !autoStartVoice || !apiKey) return;
+    const timer = setTimeout(() => toggleVoiceRef.current(), 700);
+    return () => clearTimeout(timer);
+  }, [isOpen, autoStartVoice, apiKey]);
 
   // ── TTS ──────────────────────────────────────────────────────────────────────
   const speak = useCallback((text: string) => {
@@ -208,6 +217,9 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize }: Props) 
     rec.start();
     recognitionRef.current = rec;
   }, [listening, sendText]);
+
+  // Keep ref in sync so auto-start effect always calls the latest version
+  useEffect(() => { toggleVoiceRef.current = toggleVoice; }, [toggleVoice]);
 
   // ── Save key ──────────────────────────────────────────────────────────────────
   const confirmKey = () => {

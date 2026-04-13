@@ -104,6 +104,7 @@ export function TabletApp() {
         onClose={() => setChatOpen(false)}
         widgetConfig={widgets}
         avatarSize={AVATAR_SIZE}
+        autoStartVoice
       />
 
       {/* Fixed top clock — tapping opens settings */}
