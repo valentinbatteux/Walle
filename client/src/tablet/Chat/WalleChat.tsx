@@ -36,6 +36,18 @@ const getSpeechRec = (): (new () => any) | undefined => {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 };
 
+// ── Voice helpers ─────────────────────────────────────────────────────────────
+const LS_VOICE       = 'walle_tts_voice';
+const FEMININE_NAMES = ['amélie', 'léa', 'elise', 'élise', 'hortense', 'julie', 'audrey', 'alice', 'céline', 'celine', 'google'];
+const MASCULINE_NAMES = ['thomas', 'paul', 'nicolas', 'pierre', 'daniel'];
+
+function pickFemFrVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | undefined {
+  const fr = voices.filter(v => v.lang.startsWith('fr'));
+  return fr.find(v => FEMININE_NAMES.some(k => v.name.toLowerCase().includes(k)))
+    ?? fr.find(v => !MASCULINE_NAMES.some(k => v.name.toLowerCase().includes(k)))
+    ?? fr[0];
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -55,6 +67,9 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
   const [streamText, setStreamText] = useState('');
   const [listening, setListening]   = useState(false);
   const [speaking, setSpeaking]     = useState(false);
+  const [voiceName, setVoiceName]   = useState(() => localStorage.getItem(LS_VOICE) ?? '');
+  const [voicePickerOpen, setVoicePickerOpen] = useState(false);
+  const [frVoices, setFrVoices]     = useState<SpeechSynthesisVoice[]>([]);
 
   const scrollRef      = useRef<HTMLDivElement>(null);
   const inputRef       = useRef<HTMLInputElement>(null);
@@ -81,6 +96,21 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
     }
   }, [isOpen]);
 
+  // Load available voices + watch for changes
+  useEffect(() => {
+    const update = () => setFrVoices((window.speechSynthesis?.getVoices() ?? []).filter(v => v.lang.startsWith('fr')));
+    update();
+    window.speechSynthesis?.addEventListener('voiceschanged', update);
+    return () => window.speechSynthesis?.removeEventListener('voiceschanged', update);
+  }, []);
+
+  // Auto-select best feminine voice on first load (no stored preference)
+  useEffect(() => {
+    if (!frVoices.length || voiceName) return;
+    const auto = pickFemFrVoice(frVoices);
+    if (auto) { setVoiceName(auto.name); localStorage.setItem(LS_VOICE, auto.name); }
+  }, [frVoices, voiceName]);
+
   // Auto-start voice when chat opens (if key is set and browser supports it)
   const toggleVoiceRef = useRef<() => void>(() => {});
   useEffect(() => {
@@ -93,16 +123,16 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
   const speak = useCallback((text: string) => {
     if (!window.speechSynthesis) return;
     window.speechSynthesis.cancel();
-    const utterance    = new SpeechSynthesisUtterance(text);
-    utterance.lang     = 'fr-FR';
-    utterance.rate     = 0.93;
-    utterance.pitch    = 1.05;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang  = 'fr-FR';
+    utterance.rate  = 0.92;
+    utterance.pitch = 1.0;
 
     const go = () => {
-      const voices  = window.speechSynthesis.getVoices();
-      const frVoice = voices.find(v => v.lang.startsWith('fr') && v.localService)
-        ?? voices.find(v => v.lang.startsWith('fr'));
-      if (frVoice) utterance.voice = frVoice;
+      const voices = window.speechSynthesis.getVoices();
+      const voice  = (voiceName ? voices.find(v => v.name === voiceName) : null)
+        ?? pickFemFrVoice(voices);
+      if (voice) utterance.voice = voice;
       utterance.onstart = () => setSpeaking(true);
       utterance.onend   = () => setSpeaking(false);
       utterance.onerror = () => setSpeaking(false);
@@ -111,7 +141,7 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
 
     if (window.speechSynthesis.getVoices().length > 0) go();
     else window.speechSynthesis.addEventListener('voiceschanged', go, { once: true });
-  }, []);
+  }, [voiceName]);
 
   // ── Send message ─────────────────────────────────────────────────────────────
   const sendText = useCallback(async (text: string) => {
@@ -288,11 +318,57 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
                   style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, cursor: 'pointer', color: 'rgba(255,255,255,0.35)', fontSize: 10, padding: '2px 8px', fontFamily: 'inherit' }}
                 >{cfg.provider.name} · {cfg.model.split('/').pop()}</button>
               )}
+              {/* Voice picker button */}
+              {cfg.apiKey && (
+                <button
+                  onClick={() => setVoicePickerOpen(o => !o)}
+                  title="Changer la voix"
+                  style={{
+                    background: voicePickerOpen ? 'rgba(167,139,250,0.15)' : 'rgba(255,255,255,0.06)',
+                    border: `1px solid ${voicePickerOpen ? 'rgba(167,139,250,0.4)' : 'rgba(255,255,255,0.1)'}`,
+                    borderRadius: 8, cursor: 'pointer',
+                    color: voicePickerOpen ? 'rgba(167,139,250,0.85)' : 'rgba(255,255,255,0.35)',
+                    fontSize: 10, padding: '2px 8px', fontFamily: 'inherit', transition: 'all 0.15s',
+                  }}
+                >🔊 {voiceName ? voiceName.split(' ').slice(0, 2).join(' ') : 'Voix'}</button>
+              )}
               <button onClick={onClose}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.28)', fontSize: 16, padding: '2px 6px', lineHeight: 1 }}
                 onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.6)')}
                 onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.28)')}>✕</button>
             </div>
+
+            {/* ── Voice picker panel ── */}
+            {voicePickerOpen && cfg.apiKey && (
+              <div style={{ padding: '12px 18px', borderBottom: '1px solid rgba(167,139,250,0.1)', background: 'rgba(0,0,0,0.18)', flexShrink: 0 }}>
+                <p style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.3)' }}>
+                  Voix françaises disponibles · clique pour tester
+                </p>
+                {frVoices.length === 0 ? (
+                  <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', margin: 0 }}>Aucune voix française détectée sur cet appareil</p>
+                ) : (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {frVoices.map(v => (
+                      <button key={v.name} onClick={() => {
+                        setVoiceName(v.name);
+                        localStorage.setItem(LS_VOICE, v.name);
+                        const u = new SpeechSynthesisUtterance('Bonjour, je suis Walle !');
+                        u.voice = v; u.lang = 'fr-FR'; u.rate = 0.92; u.pitch = 1.0;
+                        window.speechSynthesis.cancel();
+                        window.speechSynthesis.speak(u);
+                        setVoicePickerOpen(false);
+                      }} style={{
+                        padding: '5px 11px', borderRadius: 8, fontSize: 11, fontFamily: 'inherit',
+                        border: voiceName === v.name ? '1px solid rgba(167,139,250,0.55)' : '1px solid rgba(255,255,255,0.1)',
+                        background: voiceName === v.name ? 'rgba(167,139,250,0.18)' : 'rgba(255,255,255,0.05)',
+                        color: voiceName === v.name ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.5)',
+                        cursor: 'pointer', transition: 'all 0.12s',
+                      }}>{v.name}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* ── Saisie de la clé API si absente ── */}
             {!cfg.apiKey ? (
