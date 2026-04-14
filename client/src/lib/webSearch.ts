@@ -1,0 +1,116 @@
+/**
+ * Real-time web search via Tavily or Serper.dev (both support browser CORS calls).
+ *
+ * Tavily  – AI-focused, free 1 000 req/month  → https://tavily.com
+ * Serper  – Google results, free 2 500 req/month → https://serper.dev
+ */
+
+const LS_KEY      = 'walle_search_key';
+const LS_PROVIDER = 'walle_search_provider';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+export type SearchProviderId = 'tavily' | 'serper';
+
+export interface SearchProviderMeta {
+  id: SearchProviderId;
+  name: string;
+  docsUrl: string;
+  keyPlaceholder: string;
+  freeQuota: string;
+}
+
+export const SEARCH_PROVIDERS: SearchProviderMeta[] = [
+  {
+    id: 'tavily',
+    name: 'Tavily',
+    docsUrl: 'https://tavily.com',
+    keyPlaceholder: 'tvly-…',
+    freeQuota: '1 000 req/mois gratuites',
+  },
+  {
+    id: 'serper',
+    name: 'Serper',
+    docsUrl: 'https://serper.dev',
+    keyPlaceholder: 'Clé Serper…',
+    freeQuota: '2 500 req/mois gratuites',
+  },
+];
+
+export interface SearchConfig { provider: SearchProviderId; key: string; }
+
+export function loadSearchConfig(): SearchConfig {
+  return {
+    provider: (localStorage.getItem(LS_PROVIDER) ?? 'tavily') as SearchProviderId,
+    key:      localStorage.getItem(LS_KEY) ?? '',
+  };
+}
+export function saveSearchConfig(provider: SearchProviderId, key: string): void {
+  localStorage.setItem(LS_PROVIDER, provider);
+  localStorage.setItem(LS_KEY, key);
+}
+export function clearSearchConfig(): void {
+  localStorage.removeItem(LS_KEY);
+  localStorage.removeItem(LS_PROVIDER);
+}
+export function isSearchKeyValid(key: string): boolean {
+  return key.trim().length >= 12;
+}
+
+// ── Providers ─────────────────────────────────────────────────────────────────
+interface RawResult { title: string; snippet: string; }
+
+async function searchTavily(query: string, key: string): Promise<RawResult[]> {
+  const res = await fetch('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: key, query, search_depth: 'basic', max_results: 5 }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data.results ?? []).map((r: any) => ({
+    title:   r.title   as string,
+    snippet: ((r.content as string) ?? '').slice(0, 300),
+  }));
+}
+
+async function searchSerper(query: string, key: string): Promise<RawResult[]> {
+  const res = await fetch('https://google.serper.dev/search', {
+    method: 'POST',
+    headers: { 'X-API-KEY': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ q: query, num: 5, hl: 'fr', gl: 'fr' }),
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data: any = await res.json();
+  const results: RawResult[] = [];
+  // Answer box (direct answer) first
+  if (data.answerBox?.answer)  results.push({ title: 'Réponse directe', snippet: data.answerBox.answer as string });
+  if (data.answerBox?.snippet) results.push({ title: 'Extrait',         snippet: data.answerBox.snippet as string });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const r of (data.organic ?? []).slice(0, 5) as any[]) {
+    results.push({ title: r.title as string, snippet: (r.snippet ?? '') as string });
+  }
+  return results.slice(0, 6);
+}
+
+// ── Main export ───────────────────────────────────────────────────────────────
+export async function webSearch(query: string): Promise<string> {
+  const { provider, key } = loadSearchConfig();
+  if (!key) return '';
+  try {
+    const results = provider === 'serper'
+      ? await searchSerper(query, key)
+      : await searchTavily(query, key);
+    if (!results.length) return '';
+    const lines = results.map((r, i) =>
+      `[${i + 1}] ${r.title}${r.snippet ? ` — ${r.snippet}` : ''}`
+    );
+    return `Résultats web en temps réel pour "${query}" :\n${lines.join('\n')}`;
+  } catch {
+    return '';
+  }
+}

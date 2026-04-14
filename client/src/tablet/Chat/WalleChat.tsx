@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetMap } from '../../types/widgets';
 import { AI_PROVIDERS, AIConfig, isKeyValid, loadAIConfig, saveAIConfig, clearAIConfig } from '../../lib/aiConfig';
 import { buildWidgetContext, getLastContextData } from '../../lib/buildWidgetContext';
+import { SEARCH_PROVIDERS, SearchProviderId, SearchConfig, loadSearchConfig, saveSearchConfig, clearSearchConfig, isSearchKeyValid, webSearch } from '../../lib/webSearch';
 
 const SYSTEM_BASE = `Tu es Walle, l'assistant IA personnel et attachant d'un tableau de bord domestique installé sur un mur. Tu es curieux, bienveillant, légèrement espiègle, et tu parles toujours en français avec chaleur et naturel.
 
@@ -229,6 +230,11 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
   const [voiceName, setVoiceName]   = useState(() => localStorage.getItem(LS_VOICE) ?? '');
   const [voicePickerOpen, setVoicePickerOpen] = useState(false);
   const [frVoices, setFrVoices]     = useState<SpeechSynthesisVoice[]>([]);
+  const [searchCfg, setSearchCfg]   = useState<SearchConfig>(() => loadSearchConfig());
+  const [searchPanelOpen, setSearchPanelOpen] = useState(false);
+  const [searchKeyInput, setSearchKeyInput]   = useState('');
+  const [searchProvider, setSearchProvider]   = useState<SearchProviderId>(() => loadSearchConfig().provider);
+  const [searching, setSearching]   = useState(false);
 
   const scrollRef         = useRef<HTMLDivElement>(null);
   const inputRef          = useRef<HTMLInputElement>(null);
@@ -325,9 +331,19 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
     setStreamText('');
 
     try {
-      // Fetch live widget data to inject as context
-      const widgetData = await buildWidgetContext(widgetConfig);
-      const systemPrompt = `${SYSTEM_BASE}\n\n## État actuel de ta maison :\n${widgetData}`;
+      // Fetch widget data + web search in parallel
+      setSearching(!!searchCfg.key);
+      const [widgetData, searchData] = await Promise.all([
+        buildWidgetContext(widgetConfig),
+        webSearch(text),
+      ]);
+      setSearching(false);
+
+      const systemPrompt = [
+        SYSTEM_BASE,
+        `\n## État actuel de ta maison :\n${widgetData}`,
+        searchData ? `\n## Résultats web en temps réel (priorité sur tes connaissances statiques) :\n${searchData}` : '',
+      ].join('');
 
       const reqHeaders = {
         'Content-Type': 'application/json',
@@ -397,13 +413,14 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
       }
       setStreamText('');
     } catch (err) {
+      setSearching(false);
       const msg = err instanceof Error ? err.message : 'Erreur inconnue';
       setMessages(prev => [...prev, { role: 'assistant', content: `Oups ! ${msg} 😅` }]);
       setStreamText('');
     } finally {
       setStreaming(false);
     }
-  }, [cfg, messages, widgetConfig, speak]);
+  }, [cfg, searchCfg, messages, widgetConfig, speak]);
 
   const handleSend = useCallback(() => {
     const text = input.trim();
@@ -507,10 +524,24 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
                   style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, cursor: 'pointer', color: 'rgba(255,255,255,0.35)', fontSize: 10, padding: '2px 8px', fontFamily: 'inherit' }}
                 >{cfg.provider.name} · {cfg.model.split('/').pop()}</button>
               )}
+              {/* Web search button */}
+              {cfg.apiKey && (
+                <button
+                  onClick={() => { setSearchPanelOpen(o => !o); setVoicePickerOpen(false); }}
+                  title={searchCfg.key ? `Recherche web activée (${SEARCH_PROVIDERS.find(p => p.id === searchCfg.provider)?.name})` : 'Activer la recherche web'}
+                  style={{
+                    background: searchCfg.key ? (searchPanelOpen ? 'rgba(100,220,150,0.18)' : 'rgba(100,220,150,0.08)') : (searchPanelOpen ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.06)'),
+                    border: `1px solid ${searchCfg.key ? 'rgba(100,220,150,0.35)' : (searchPanelOpen ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)')}`,
+                    borderRadius: 8, cursor: 'pointer',
+                    color: searchCfg.key ? 'rgba(100,220,150,0.85)' : 'rgba(255,255,255,0.35)',
+                    fontSize: 10, padding: '2px 8px', fontFamily: 'inherit', transition: 'all 0.15s',
+                  }}
+                >{searching ? '🔍…' : (searchCfg.key ? '🔍 Web' : '🔍')}</button>
+              )}
               {/* Voice picker button */}
               {cfg.apiKey && (
                 <button
-                  onClick={() => setVoicePickerOpen(o => !o)}
+                  onClick={() => { setVoicePickerOpen(o => !o); setSearchPanelOpen(false); }}
                   title="Changer la voix"
                   style={{
                     background: voicePickerOpen ? 'rgba(167,139,250,0.15)' : 'rgba(255,255,255,0.06)',
@@ -556,6 +587,79 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── Search panel ── */}
+            {searchPanelOpen && cfg.apiKey && (
+              <div style={{ padding: '12px 18px', borderBottom: '1px solid rgba(100,220,150,0.1)', background: 'rgba(0,0,0,0.2)', flexShrink: 0 }}>
+                <p style={{ margin: '0 0 8px', fontSize: 10, fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(100,220,150,0.5)' }}>
+                  Recherche web en temps réel
+                </p>
+                {/* Provider tabs */}
+                <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
+                  {SEARCH_PROVIDERS.map(sp => (
+                    <button key={sp.id} onClick={() => setSearchProvider(sp.id)} style={{
+                      padding: '5px 12px', borderRadius: 8, fontSize: 11, fontFamily: 'inherit', cursor: 'pointer',
+                      border: searchProvider === sp.id ? '1px solid rgba(100,220,150,0.5)' : '1px solid rgba(255,255,255,0.1)',
+                      background: searchProvider === sp.id ? 'rgba(100,220,150,0.12)' : 'rgba(255,255,255,0.04)',
+                      color: searchProvider === sp.id ? 'rgba(100,220,150,0.9)' : 'rgba(255,255,255,0.4)',
+                      transition: 'all 0.12s',
+                    }}>
+                      {sp.name}
+                      <span style={{ fontSize: 9, display: 'block', color: 'inherit', opacity: 0.65 }}>{sp.freeQuota}</span>
+                    </button>
+                  ))}
+                </div>
+                {/* Key input */}
+                {searchCfg.key ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ flex: 1, fontSize: 11, color: 'rgba(100,220,150,0.7)' }}>
+                      ✓ Clé {SEARCH_PROVIDERS.find(p => p.id === searchCfg.provider)?.name} configurée
+                    </span>
+                    <button onClick={() => { clearSearchConfig(); setSearchCfg(loadSearchConfig()); setSearchKeyInput(''); }}
+                      style={{ padding: '4px 10px', borderRadius: 7, fontSize: 10, fontFamily: 'inherit', cursor: 'pointer', background: 'rgba(255,80,80,0.12)', border: '1px solid rgba(255,80,80,0.25)', color: 'rgba(255,100,100,0.8)' }}>
+                      Supprimer
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      type="password"
+                      value={searchKeyInput}
+                      onChange={e => setSearchKeyInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && isSearchKeyValid(searchKeyInput)) {
+                          saveSearchConfig(searchProvider, searchKeyInput.trim());
+                          setSearchCfg(loadSearchConfig());
+                          setSearchKeyInput('');
+                        }
+                      }}
+                      placeholder={SEARCH_PROVIDERS.find(p => p.id === searchProvider)?.keyPlaceholder}
+                      style={{
+                        flex: 1, padding: '7px 11px', borderRadius: 8, boxSizing: 'border-box',
+                        border: '1px solid rgba(100,220,150,0.25)', background: 'rgba(255,255,255,0.05)',
+                        color: 'rgba(255,255,255,0.85)', fontSize: 12, outline: 'none', fontFamily: 'monospace',
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (!isSearchKeyValid(searchKeyInput)) return;
+                        saveSearchConfig(searchProvider, searchKeyInput.trim());
+                        setSearchCfg(loadSearchConfig());
+                        setSearchKeyInput('');
+                      }}
+                      disabled={!isSearchKeyValid(searchKeyInput)}
+                      style={{
+                        padding: '7px 14px', borderRadius: 8, fontSize: 12, fontFamily: 'inherit', cursor: isSearchKeyValid(searchKeyInput) ? 'pointer' : 'default',
+                        border: 'none', background: isSearchKeyValid(searchKeyInput) ? 'rgba(100,220,150,0.7)' : 'rgba(255,255,255,0.08)',
+                        color: 'white', fontWeight: 600, transition: 'all 0.15s',
+                      }}>OK</button>
+                  </div>
+                )}
+                <p style={{ margin: '7px 0 0', fontSize: 9.5, color: 'rgba(255,255,255,0.2)', lineHeight: 1.5 }}>
+                  {SEARCH_PROVIDERS.find(p => p.id === searchProvider)?.docsUrl} · Clé stockée localement
+                </p>
               </div>
             )}
 
@@ -628,6 +732,70 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
                   Clé stockée localement · jamais partagée<br />
                   <span style={{ color: 'rgba(167,139,250,0.4)' }}>{provider.docsUrl}</span>
                 </p>
+
+                {/* ── Recherche web (optionnel) ── */}
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 14 }}>
+                  <p style={{ margin: '0 0 7px', fontSize: 10, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase', color: 'rgba(100,220,150,0.45)' }}>
+                    🔍 Recherche web · optionnel
+                  </p>
+                  <div style={{ display: 'flex', gap: 5, marginBottom: 8 }}>
+                    {SEARCH_PROVIDERS.map(sp => (
+                      <button key={sp.id} onClick={() => setSearchProvider(sp.id)} style={{
+                        flex: 1, padding: '6px 4px', borderRadius: 9, fontSize: 11, fontFamily: 'inherit', cursor: 'pointer',
+                        border: searchProvider === sp.id ? '1px solid rgba(100,220,150,0.45)' : '1px solid rgba(255,255,255,0.08)',
+                        background: searchProvider === sp.id ? 'rgba(100,220,150,0.1)' : 'rgba(255,255,255,0.03)',
+                        color: searchProvider === sp.id ? 'rgba(100,220,150,0.85)' : 'rgba(255,255,255,0.35)',
+                        transition: 'all 0.12s',
+                      }}>
+                        {sp.name}
+                        <span style={{ fontSize: 8.5, display: 'block', opacity: 0.7 }}>{sp.freeQuota}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <input
+                      type="password"
+                      value={searchKeyInput}
+                      onChange={e => setSearchKeyInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' && isSearchKeyValid(searchKeyInput)) {
+                          saveSearchConfig(searchProvider, searchKeyInput.trim());
+                          setSearchCfg(loadSearchConfig());
+                          setSearchKeyInput('');
+                        }
+                      }}
+                      placeholder={SEARCH_PROVIDERS.find(p => p.id === searchProvider)?.keyPlaceholder ?? ''}
+                      style={{
+                        flex: 1, padding: '9px 12px', borderRadius: 9, boxSizing: 'border-box',
+                        border: '1px solid rgba(100,220,150,0.2)', background: 'rgba(255,255,255,0.04)',
+                        color: 'rgba(255,255,255,0.82)', fontSize: 12, outline: 'none', fontFamily: 'monospace',
+                      }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (!isSearchKeyValid(searchKeyInput)) return;
+                        saveSearchConfig(searchProvider, searchKeyInput.trim());
+                        setSearchCfg(loadSearchConfig());
+                        setSearchKeyInput('');
+                      }}
+                      disabled={!isSearchKeyValid(searchKeyInput)}
+                      style={{
+                        padding: '9px 14px', borderRadius: 9, fontSize: 12, fontFamily: 'inherit',
+                        cursor: isSearchKeyValid(searchKeyInput) ? 'pointer' : 'default', border: 'none',
+                        background: isSearchKeyValid(searchKeyInput) ? 'rgba(100,220,150,0.65)' : 'rgba(255,255,255,0.07)',
+                        color: 'white', fontWeight: 600, transition: 'all 0.15s',
+                      }}>OK</button>
+                  </div>
+                  {searchCfg.key && (
+                    <p style={{ margin: '6px 0 0', fontSize: 10, color: 'rgba(100,220,150,0.6)' }}>
+                      ✓ Recherche web activée ({SEARCH_PROVIDERS.find(p => p.id === searchCfg.provider)?.name})
+                    </p>
+                  )}
+                  <p style={{ margin: '5px 0 0', fontSize: 9.5, color: 'rgba(255,255,255,0.18)', lineHeight: 1.5 }}>
+                    Permet à Walle de trouver des infos fraîches sur n'importe quel sujet.<br />
+                    {SEARCH_PROVIDERS.find(p => p.id === searchProvider)?.docsUrl}
+                  </p>
+                </div>
               </div>
             ) : (
               /* ── Messages ── */
@@ -653,7 +821,16 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
                   </motion.div>
                 ))}
 
-                {streaming && !streamText && (
+                {searching && (
+                  <motion.div initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} style={{ alignSelf: 'flex-start' }}>
+                    <div style={{ padding: '8px 14px', borderRadius: '14px 14px 14px 4px', background: 'rgba(100,220,150,0.07)', border: '1px solid rgba(100,220,150,0.18)', display: 'flex', gap: 7, alignItems: 'center' }}>
+                      <motion.span animate={{ rotate: [0, 360] }} transition={{ duration: 1.2, repeat: Infinity, ease: 'linear' }} style={{ display: 'inline-block', fontSize: 12 }}>🔍</motion.span>
+                      <span style={{ fontSize: 12, color: 'rgba(100,220,150,0.75)' }}>Recherche sur le web…</span>
+                    </div>
+                  </motion.div>
+                )}
+
+                {streaming && !streamText && !searching && (
                   <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ alignSelf: 'flex-start' }}>
                     <div style={{ padding: '12px 16px', borderRadius: '18px 18px 18px 4px', background: 'rgba(255,255,255,0.055)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 5, alignItems: 'center' }}>
                       {[0,1,2].map(i => (
