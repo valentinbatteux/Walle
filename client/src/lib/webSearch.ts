@@ -56,45 +56,90 @@ export function isSearchKeyValid(key: string): boolean {
   return key.trim().length >= 12;
 }
 
-// ── Providers ─────────────────────────────────────────────────────────────────
-interface RawResult { title: string; snippet: string; }
+// ── Result types ──────────────────────────────────────────────────────────────
+export interface WebSearchResult {
+  title:    string;
+  snippet:  string;
+  url:      string;
+  source:   string;      // domain, e.g. "lemonde.fr"
+  imageUrl?: string;     // inline thumbnail (Serper)
+}
 
-async function searchTavily(query: string, key: string): Promise<RawResult[]> {
+export interface LastSearchData {
+  query:   string;
+  results: WebSearchResult[];
+  images:  string[];     // extra image URLs (Tavily include_images)
+}
+
+// ── Cache for inline cards ────────────────────────────────────────────────────
+let lastSearch: LastSearchData | null = null;
+export function getLastSearch(): LastSearchData | null { return lastSearch; }
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function domain(url: string): string {
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return ''; }
+}
+
+interface ProviderResult { results: WebSearchResult[]; images: string[]; }
+
+// ── Tavily ────────────────────────────────────────────────────────────────────
+async function searchTavily(query: string, key: string): Promise<ProviderResult> {
   const res = await fetch('https://api.tavily.com/search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ api_key: key, query, search_depth: 'basic', max_results: 5 }),
+    body: JSON.stringify({
+      api_key: key,
+      query,
+      search_depth: 'basic',
+      max_results: 5,
+      include_images: true,
+    }),
     signal: AbortSignal.timeout(8000),
   });
-  if (!res.ok) return [];
+  if (!res.ok) return { results: [], images: [] };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any = await res.json();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (data.results ?? []).map((r: any) => ({
+  const results: WebSearchResult[] = (data.results ?? []).map((r: any) => ({
     title:   r.title   as string,
-    snippet: ((r.content as string) ?? '').slice(0, 300),
+    snippet: ((r.content as string) ?? '').slice(0, 250),
+    url:     r.url     as string,
+    source:  domain(r.url as string),
   }));
+  const images: string[] = (data.images ?? []).slice(0, 4) as string[];
+  return { results, images };
 }
 
-async function searchSerper(query: string, key: string): Promise<RawResult[]> {
+// ── Serper ────────────────────────────────────────────────────────────────────
+async function searchSerper(query: string, key: string): Promise<ProviderResult> {
   const res = await fetch('https://google.serper.dev/search', {
     method: 'POST',
     headers: { 'X-API-KEY': key, 'Content-Type': 'application/json' },
     body: JSON.stringify({ q: query, num: 5, hl: 'fr', gl: 'fr' }),
     signal: AbortSignal.timeout(8000),
   });
-  if (!res.ok) return [];
+  if (!res.ok) return { results: [], images: [] };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data: any = await res.json();
-  const results: RawResult[] = [];
-  // Answer box (direct answer) first
-  if (data.answerBox?.answer)  results.push({ title: 'Réponse directe', snippet: data.answerBox.answer as string });
-  if (data.answerBox?.snippet) results.push({ title: 'Extrait',         snippet: data.answerBox.snippet as string });
+  const results: WebSearchResult[] = [];
+  if (data.answerBox?.answer) {
+    results.push({ title: 'Réponse directe', snippet: data.answerBox.answer as string, url: '', source: '' });
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   for (const r of (data.organic ?? []).slice(0, 5) as any[]) {
-    results.push({ title: r.title as string, snippet: (r.snippet ?? '') as string });
+    results.push({
+      title:    r.title    as string,
+      snippet:  (r.snippet ?? '') as string,
+      url:      (r.link ?? '')    as string,
+      source:   domain((r.link ?? '') as string),
+      imageUrl: r.imageUrl as string | undefined,
+    });
   }
-  return results.slice(0, 6);
+  const images: string[] = results
+    .map(r => r.imageUrl)
+    .filter((u): u is string => !!u)
+    .slice(0, 4);
+  return { results, images };
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
@@ -102,15 +147,21 @@ export async function webSearch(query: string): Promise<string> {
   const { provider, key } = loadSearchConfig();
   if (!key) return '';
   try {
-    const results = provider === 'serper'
+    const { results, images } = provider === 'serper'
       ? await searchSerper(query, key)
       : await searchTavily(query, key);
+
     if (!results.length) return '';
+
+    // Store for inline card
+    lastSearch = { query, results, images };
+
     const lines = results.map((r, i) =>
       `[${i + 1}] ${r.title}${r.snippet ? ` — ${r.snippet}` : ''}`
     );
     return `Résultats web en temps réel pour "${query}" :\n${lines.join('\n')}`;
   } catch {
+    lastSearch = null;
     return '';
   }
 }

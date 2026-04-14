@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetMap } from '../../types/widgets';
 import { AI_PROVIDERS, AIConfig, isKeyValid, loadAIConfig, saveAIConfig, clearAIConfig } from '../../lib/aiConfig';
 import { buildWidgetContext, getLastContextData } from '../../lib/buildWidgetContext';
-import { SEARCH_PROVIDERS, SearchProviderId, SearchConfig, loadSearchConfig, saveSearchConfig, clearSearchConfig, isSearchKeyValid, webSearch } from '../../lib/webSearch';
+import { SEARCH_PROVIDERS, SearchProviderId, SearchConfig, loadSearchConfig, saveSearchConfig, clearSearchConfig, isSearchKeyValid, webSearch, getLastSearch } from '../../lib/webSearch';
 
 const SYSTEM_BASE = `Tu es Walle, l'assistant IA personnel et attachant d'un tableau de bord domestique installé sur un mur. Tu es curieux, bienveillant, légèrement espiègle, et tu parles toujours en français avec chaleur et naturel.
 
@@ -14,7 +14,7 @@ Règles :
 - Pour l'actualité, base-toi UNIQUEMENT sur les titres fournis dans le contexte. Ne jamais inventer ou supposer des événements récents. Si un sujet d'actualité n'est pas dans les titres fournis, dis-le clairement : "Je n'ai pas d'info là-dessus pour l'instant."
 - Si une donnée est absente, dis-le honnêtement`;
 
-type WidgetType = 'weather' | 'football' | 'brocante' | 'news';
+type WidgetType = 'weather' | 'football' | 'brocante' | 'news' | 'search';
 interface ChatMessage { role: 'user' | 'assistant'; content: string; widget?: WidgetType; }
 
 // Detect topic from user message to attach matching inline card
@@ -185,6 +185,75 @@ function InlineWidgetCard({ type }: { type: WidgetType }) {
     );
   }
 
+  // ── Web search results ────────────────────────────────────────────────────────
+  if (type === 'search') {
+    const s = getLastSearch();
+    if (!s) return null;
+    const hasImages = s.images.length > 0 || s.results.some(r => r.imageUrl);
+    const allImages = [
+      ...s.results.filter(r => r.imageUrl).map(r => r.imageUrl as string),
+      ...s.images,
+    ].filter((url, i, arr) => arr.indexOf(url) === i).slice(0, 4);
+
+    return (
+      <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+        {/* Image strip */}
+        {hasImages && allImages.length > 0 && (
+          <div style={{ display: 'flex', gap: 2, height: 90 }}>
+            {allImages.slice(0, 3).map((img, i) => (
+              <img
+                key={i}
+                src={img}
+                alt=""
+                style={{
+                  flex: i === 0 && allImages.length === 1 ? '1' : undefined,
+                  width: allImages.length === 1 ? '100%' : allImages.length === 2 ? '50%' : i === 0 ? '52%' : '24%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  display: 'block',
+                  flexShrink: 0,
+                }}
+                onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+              />
+            ))}
+          </div>
+        )}
+        <div style={{ padding: '10px 13px' }}>
+          <div style={{ ...labelStyle, marginBottom: 8 }}>
+            🔍 Web · <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'rgba(255,255,255,0.35)', fontSize: 9 }}>{s.query}</span>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+            {s.results.slice(0, 4).map((r, i) => (
+              <div key={i} style={{ padding: '5px 8px', borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>
+                {r.source && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                    <img
+                      src={`https://www.google.com/s2/favicons?domain=${r.source}&sz=16`}
+                      alt=""
+                      width={12}
+                      height={12}
+                      style={{ borderRadius: 2, opacity: 0.7 }}
+                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                    />
+                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.28)' }}>{r.source}</span>
+                  </div>
+                )}
+                <div style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.82)', lineHeight: 1.3, marginBottom: 2 }}>
+                  {r.title}
+                </div>
+                {r.snippet && (
+                  <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.42)', lineHeight: 1.4 }}>
+                    {r.snippet.slice(0, 130)}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return null;
 }
 
@@ -325,7 +394,7 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
   const sendText = useCallback(async (text: string) => {
     if (!text.trim() || streamingRef.current || !cfg.apiKey) return;
 
-    const topic = detectTopic(text);
+    const baseTopic = detectTopic(text);
     setMessages(prev => [...prev, { role: 'user', content: text }]);
     setStreaming(true);
     setStreamText('');
@@ -338,6 +407,8 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
         webSearch(text),
       ]);
       setSearching(false);
+      // If web search returned results, show search card (overrides widget card)
+      const topic: WidgetType | undefined = searchData ? 'search' : baseTopic;
 
       const systemPrompt = [
         SYSTEM_BASE,
