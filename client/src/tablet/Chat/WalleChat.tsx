@@ -189,66 +189,41 @@ function InlineWidgetCard({ type }: { type: WidgetType }) {
   if (type === 'search') {
     const s = getLastSearch();
     if (!s) return null;
-    const hasImages = s.images.length > 0 || s.results.some(r => r.imageUrl);
     const allImages = [
       ...s.results.filter(r => r.imageUrl).map(r => r.imageUrl as string),
       ...s.images,
-    ].filter((url, i, arr) => arr.indexOf(url) === i).slice(0, 4);
+    ].filter((url, i, arr) => arr.indexOf(url) === i).slice(0, 3);
 
     return (
       <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
         {/* Image strip */}
-        {hasImages && allImages.length > 0 && (
-          <div style={{ display: 'flex', gap: 2, height: 90 }}>
-            {allImages.slice(0, 3).map((img, i) => (
-              <img
-                key={i}
-                src={img}
-                alt=""
+        {allImages.length > 0 && (
+          <div style={{ display: 'flex', gap: 2, height: 100 }}>
+            {allImages.map((img, i) => (
+              <img key={i} src={img} alt=""
                 style={{
-                  flex: i === 0 && allImages.length === 1 ? '1' : undefined,
-                  width: allImages.length === 1 ? '100%' : allImages.length === 2 ? '50%' : i === 0 ? '52%' : '24%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  display: 'block',
-                  flexShrink: 0,
+                  width: allImages.length === 1 ? '100%' : allImages.length === 2 ? '50%' : i === 0 ? '54%' : '23%',
+                  height: '100%', objectFit: 'cover', display: 'block', flexShrink: 0,
                 }}
                 onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               />
             ))}
           </div>
         )}
-        <div style={{ padding: '10px 13px' }}>
-          <div style={{ ...labelStyle, marginBottom: 8 }}>
-            🔍 Web · <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'rgba(255,255,255,0.35)', fontSize: 9 }}>{s.query}</span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-            {s.results.slice(0, 4).map((r, i) => (
-              <div key={i} style={{ padding: '5px 8px', borderRadius: 8, background: 'rgba(255,255,255,0.04)' }}>
-                {r.source && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                    <img
-                      src={`https://www.google.com/s2/favicons?domain=${r.source}&sz=16`}
-                      alt=""
-                      width={12}
-                      height={12}
-                      style={{ borderRadius: 2, opacity: 0.7 }}
-                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                    />
-                    <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.28)' }}>{r.source}</span>
-                  </div>
-                )}
-                <div style={{ fontSize: 11, fontWeight: 500, color: 'rgba(255,255,255,0.82)', lineHeight: 1.3, marginBottom: 2 }}>
-                  {r.title}
-                </div>
-                {r.snippet && (
-                  <div style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.42)', lineHeight: 1.4 }}>
-                    {r.snippet.slice(0, 130)}
-                  </div>
-                )}
+        {/* Clean results — no links, no domains */}
+        <div style={{ padding: '10px 13px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {s.results.slice(0, 3).map((r, i) => (
+            <div key={i}>
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: 'rgba(255,255,255,0.85)', lineHeight: 1.3 }}>
+                {r.title}
               </div>
-            ))}
-          </div>
+              {r.snippet && (
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.48)', lineHeight: 1.45, marginTop: 2 }}>
+                  {r.snippet.slice(0, 140)}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -407,8 +382,8 @@ export function WalleChat({ isOpen, onClose, widgetConfig, avatarSize, autoStart
         webSearch(text),
       ]);
       setSearching(false);
-      // If web search returned results, show search card (overrides widget card)
-      const topic: WidgetType | undefined = searchData ? 'search' : baseTopic;
+      // Widget topic has priority; search card only when no widget matches
+      const topic: WidgetType | undefined = baseTopic ?? (searchData ? 'search' : undefined);
 
       const systemPrompt = [
         SYSTEM_BASE,
