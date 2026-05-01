@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WidgetConfig, WidgetId } from '../../types/widgets';
-import { WIDGET_THEME } from './WidgetCard';
 
 const LABELS: Record<WidgetId, { name: string; icon: string }> = {
   weather:  { name: 'Météo',      icon: '🌤' },
@@ -126,7 +125,6 @@ function ConfigFields({ widget, onUpdate }: { widget: WidgetConfig; onUpdate: (p
 
 export function WidgetSettingsSheet({ widget, onClose, onUpdate, onToggle }: Props) {
   const meta = LABELS[widget.id];
-  const theme = WIDGET_THEME[widget.id];
 
   return (
     <AnimatePresence>
@@ -152,8 +150,8 @@ export function WidgetSettingsSheet({ widget, onClose, onUpdate, onToggle }: Pro
           borderRadius: '1.75rem 1.75rem 0 0',
           background: 'rgba(8,5,22,0.96)',
           backdropFilter: 'blur(40px)',
-          borderTop: `2px solid ${theme.bg}`,
-          boxShadow: `0 -20px 80px rgba(0,0,0,0.6), 0 -4px 40px ${theme.glow}`,
+          borderTop: '1px solid rgba(255,255,255,0.12)',
+          boxShadow: '0 -20px 80px rgba(0,0,0,0.6)',
           padding: '0 1.5rem 2.5rem',
           maxHeight: '70vh', overflowY: 'auto',
         }}
@@ -169,7 +167,7 @@ export function WidgetSettingsSheet({ widget, onClose, onUpdate, onToggle }: Pro
             <span style={{
               fontSize: '1.6rem', width: 44, height: 44, display: 'flex', alignItems: 'center',
               justifyContent: 'center', borderRadius: '0.85rem',
-              background: theme.bg, boxShadow: `0 4px 16px ${theme.glow}`,
+              background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)',
             }}>{meta.icon}</span>
             <div>
               <h2 style={{ margin: 0, fontSize: '1rem', fontWeight: 300, color: 'rgba(255,255,255,0.92)' }}>
@@ -188,7 +186,7 @@ export function WidgetSettingsSheet({ widget, onClose, onUpdate, onToggle }: Pro
             </span>
             <button onClick={onToggle} style={{
               width: 44, height: 24, borderRadius: 999, cursor: 'pointer', position: 'relative',
-              background: widget.enabled ? theme.bg : 'rgba(255,255,255,0.1)',
+              background: widget.enabled ? 'rgba(167,139,250,0.6)' : 'rgba(255,255,255,0.1)',
               border: '1px solid rgba(255,255,255,0.15)', transition: 'background 0.2s',
             }}>
               <span style={{

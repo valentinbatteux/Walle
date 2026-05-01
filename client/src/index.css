@@ -16,56 +16,89 @@
     margin: 0;
     padding: 0;
     overflow-x: hidden;
-    font-family: 'Inter', system-ui, sans-serif;
-    background: #030408;
+    font-family: 'Barlow', system-ui, sans-serif;
+    background: #000;
     color: rgba(255, 255, 255, 0.85);
   }
 
   ::-webkit-scrollbar { display: none; }
-
-  input[type="date"],
-  input[type="time"] { color-scheme: dark; }
-
+  input[type="date"], input[type="time"] { color-scheme: dark; }
   ::placeholder { color: rgba(255,255,255,0.18); }
-
   select option { background: #08060f; color: rgba(255,255,255,0.85); }
 }
 
+/* ── Liquid-glass system ───────────────────────────────────────────────────── */
+.liquid-glass {
+  background: rgba(255,255,255,0.03);
+  background-blend-mode: luminosity;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: none;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,0.10);
+  position: relative;
+  overflow: hidden;
+}
+.liquid-glass::before {
+  content: "";
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  padding: 1.4px;
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.40) 0%,
+    rgba(255,255,255,0.12) 20%,
+    rgba(255,255,255,0)    40%,
+    rgba(255,255,255,0)    60%,
+    rgba(255,255,255,0.12) 80%,
+    rgba(255,255,255,0.40) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+.liquid-glass-strong {
+  background: rgba(255,255,255,0.04);
+  background-blend-mode: luminosity;
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: none;
+  box-shadow: 4px 4px 4px rgba(0,0,0,0.05), inset 0 1px 1px rgba(255,255,255,0.15);
+  position: relative;
+  overflow: hidden;
+}
+.liquid-glass-strong::before {
+  content: "";
+  position: absolute; inset: 0;
+  border-radius: inherit;
+  padding: 1.4px;
+  background: linear-gradient(180deg,
+    rgba(255,255,255,0.50) 0%,
+    rgba(255,255,255,0.20) 20%,
+    rgba(255,255,255,0)    40%,
+    rgba(255,255,255,0)    60%,
+    rgba(255,255,255,0.20) 80%,
+    rgba(255,255,255,0.50) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── CSS-only nebula animations (compositor thread — no JS cost) ───────────── */
+@keyframes nebula-drift-a {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%       { transform: translate(40px, -30px) scale(1.05); }
+}
+@keyframes nebula-drift-b {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%       { transform: translate(-35px, 25px) scale(0.95); }
+}
+
+/* ── Typography helpers ───────────────────────────────────────────────────── */
+.font-heading { font-family: 'Instrument Serif', serif; font-style: italic; }
+.font-body    { font-family: 'Barlow', sans-serif; }
+
 @layer utilities {
-  /* Liquid glass card */
-  .lg {
-    background: rgba(255,255,255,0.06);
-    backdrop-filter: blur(24px) saturate(180%);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    border: 1px solid rgba(255,255,255,0.11);
-    box-shadow:
-      0 8px 32px rgba(0,0,0,0.35),
-      inset 0 1px 0 rgba(255,255,255,0.16),
-      inset 0 -1px 0 rgba(255,255,255,0.04);
-  }
-
-  /* Pill variant */
-  .lg-pill {
-    background: rgba(255,255,255,0.07);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255,255,255,0.13);
-    border-radius: 999px;
-    box-shadow:
-      0 2px 14px rgba(0,0,0,0.3),
-      inset 0 1px 0 rgba(255,255,255,0.18);
-  }
-
-  /* Iridescent accent pill */
-  .lg-pill-accent {
-    background: linear-gradient(135deg, rgba(167,139,250,0.2), rgba(78,205,196,0.14));
-    border: 1px solid rgba(167,139,250,0.32);
-    border-radius: 999px;
-    box-shadow:
-      0 2px 14px rgba(140,100,255,0.18),
-      inset 0 1px 0 rgba(255,255,255,0.2);
-  }
-
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
 }

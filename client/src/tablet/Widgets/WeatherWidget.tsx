@@ -44,8 +44,8 @@ export function WeatherWidget({ config, dragControls, isDragging, onSettingsClic
             <span style={{ fontSize: '3rem', lineHeight: 1 }}>{data.icon}</span>
             <div>
               <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.3rem' }}>
-                <span style={{ fontSize: '2.5rem', fontWeight: 200, color: txt, lineHeight: 1 }}>{data.temp}°</span>
-                <span style={{ fontSize: '0.82rem', color: mute, fontWeight: 300 }}>/ {data.feels}°</span>
+                <span style={{ fontFamily: "'Instrument Serif', serif", fontStyle: 'italic', fontSize: '2.6rem', fontWeight: 400, color: txt, lineHeight: 1 }}>{data.temp}°</span>
+                <span style={{ fontFamily: "'Barlow', sans-serif", fontSize: '0.82rem', color: mute, fontWeight: 300 }}>/ {data.feels}°</span>
               </div>
               <div style={{ fontSize: '0.75rem', color: mute, marginTop: '0.1rem' }}>{data.desc}</div>
               <div style={{ fontSize: '0.6rem', color: dim, marginTop: '0.05rem' }}>

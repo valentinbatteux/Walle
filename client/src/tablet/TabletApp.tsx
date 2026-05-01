@@ -13,68 +13,37 @@ import { useWidgetConfig } from '../hooks/useWidgetConfig';
 function TopClock({ onClick }: { onClick: () => void }) {
   const { time, date, dayName } = useClock();
   return (
-    <motion.button
+    <button
       onClick={onClick}
-      whileTap={{ scale: 0.96 }}
       className="fixed top-6 right-8 z-30 text-right select-none"
-      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem 0.5rem', borderRadius: '0.75rem' }}
+      style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.35rem 0.6rem', borderRadius: '1rem' }}
     >
-      <motion.div
-        whileHover={{ background: 'rgba(255,255,255,0.04)' }}
-        style={{ borderRadius: '0.75rem', padding: '0.25rem 0.5rem' }}
-      >
-        <div style={{
-          fontSize: '1.6rem',
-          fontWeight: 200,
-          color: 'rgba(255,255,255,0.88)',
-          letterSpacing: '0.04em',
-          lineHeight: 1,
-          textShadow: '0 0 20px rgba(160,130,255,0.4)',
-        }}>
-          {time}
-        </div>
-        <div style={{
-          fontSize: '0.7rem',
-          fontWeight: 300,
-          color: 'rgba(255,255,255,0.40)',
-          letterSpacing: '0.18em',
-          textTransform: 'uppercase',
-          marginTop: '0.3rem',
-        }}>
-          {dayName} · {date}
-        </div>
-      </motion.div>
-    </motion.button>
+      <div style={{
+        fontFamily: "'Instrument Serif', serif",
+        fontStyle: 'italic',
+        fontSize: '2rem',
+        fontWeight: 400,
+        color: 'rgba(255,255,255,0.92)',
+        letterSpacing: '-0.02em',
+        lineHeight: 1,
+      }}>
+        {time}
+      </div>
+      <div style={{
+        fontFamily: "'Barlow', sans-serif",
+        fontSize: '0.62rem',
+        fontWeight: 400,
+        color: 'rgba(255,255,255,0.35)',
+        letterSpacing: '0.18em',
+        textTransform: 'uppercase',
+        marginTop: '0.3rem',
+      }}>
+        {dayName} · {date}
+      </div>
+    </button>
   );
 }
 
-/* Scroll hint arrow */
-function ScrollHint() {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: [0, 0.5, 0] }}
-      transition={{ duration: 2.5, repeat: Infinity, delay: 3 }}
-      style={{
-        position: 'absolute', bottom: '7.5rem', left: '50%', transform: 'translateX(-50%)',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.3rem',
-        pointerEvents: 'none',
-      }}
-    >
-      <span style={{ fontSize: '0.55rem', letterSpacing: '0.2em', color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase' }}>
-        widgets
-      </span>
-      <motion.div
-        animate={{ y: [0, 6, 0] }}
-        transition={{ duration: 1.2, repeat: Infinity }}
-      >
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-          <path d="M4 6l4 4 4-4" stroke="rgba(167,139,250,0.4)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </motion.div>
-    </motion.div>
-  );
-}
 
 const AVATAR_SIZE = 170;
 
@@ -142,9 +111,6 @@ export function TabletApp() {
         {/* Empty center — avatar now roams freely across the screen */}
         <div style={{ flex: 1 }} />
 
-        {/* Scroll hint */}
-        <ScrollHint />
-
         {/* Calendar strip pinned to bottom of screen 1 */}
         <div style={{ flexShrink: 0 }}>
           <CalendarStrip selectedDate={selectedDate} onSelectDate={handleSelectDate} />
@@ -160,8 +126,9 @@ export function TabletApp() {
         }}>
           <div style={{ flex: 1, height: 1, background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.08))' }} />
           <span style={{
+            fontFamily: "'Barlow', sans-serif",
             fontSize: '0.6rem', fontWeight: 500, letterSpacing: '0.22em',
-            textTransform: 'uppercase', color: 'rgba(255,255,255,0.25)',
+            textTransform: 'uppercase', color: 'rgba(255,255,255,0.2)',
           }}>
             Tableau de bord
           </span>
